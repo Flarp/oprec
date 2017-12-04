@@ -4,29 +4,77 @@ trace_macros!(true);
 extern crate num;
 use std::ops::*;
 
-trait Derive: Add + Sub + Neg + Mul + Div + std::marker::Sized {}
+#[derive(Debug)]
+enum CalculusOperations {
+    Sin,
+    Cos,
+    Tan,
+    Asin,
+    Acos,
+    Atan,
+    Sinh,
+    Cosh,
+    Tanh,
+    Asinh,
+    Acosh,
+    Atanh,
+    Pow(Box<Derivable>),
+    Exp,
+    Exp2,
+    Ln,
+    Log(Box<Derivable>),
+    Log2,
+    Log10,
+    Sqrt,
+    Cbrt,
+    Hypot,
+    Add(Box<Derivable>),
+    Sub(Box<Derivable>),
+    Mul(Box<Derivable>),
+    Div(Box<Derivable>),
+    Nop
+}
 
-macro_rules! ugly_impl {
-    ($($t:ty),*) => {
-        $(impl Derive for $t {})*
+#[derive(Debug)]
+struct CalculusCons {
+    curr_op: CalculusOperations,
+    next_op: Option<Box<CalculusCons>>
+}
+
+impl CalculusCons {
+    fn new() -> CalculusCons {
+        CalculusCons { curr_op: CalculusOperations::Nop, next_op: None }
+    }
+    fn push(self, i: CalculusOperations) -> CalculusCons {
+        CalculusCons { curr_op: i, next_op: Some(Box::new(self)) }
     }
 }
 
-ugly_impl!(i32, i16, i8, i64, f32, f64);
-
 #[derive(Debug)]
-struct Derivable<T: Derive>(T);
+struct Derivable {
+    num: f64,
+    ops: CalculusCons
+}
 
-impl<T: Derive> Add for Derivable<T> {
-    type Output = Derivable<T>;
-    
-    fn add(self, other: Derivable<T>) -> Self::Output {
-        let x: T = 2;
-        Derivable::<T>(x)
+impl Derivable {
+    fn new(x: f64) -> Derivable {
+        Derivable { num: x, ops: CalculusCons::new() }
+    }
+    fn push(self, i: CalculusOperations) -> Derivable {
+        Derivable { num: self.num, ops: self.ops.push(i) }
+    }
+}
+
+impl Add for Derivable {
+    type Output = Derivable;
+    fn add(self, next: Derivable) -> Self::Output {
+        self.push(CalculusOperations::Add(Box::new(next)))
+
     }
 }
 
 fn main() {
-
-    println!("{:?}", 3);
+    let z = Derivable::new(14 as f64);
+    let x = Derivable::new(15 as f64);
+    println!("{:?}", z+x);
 }
