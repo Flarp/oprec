@@ -1,10 +1,13 @@
 #![feature(trace_macros)]
+
+#[macro_use]
+extern crate lazy_static;
 trace_macros!(true);
 
 extern crate num;
 use std::ops::*;
 
-#[derive(Debug)]
+#[derive(Debug, Hash)]
 enum CalculusOperations {
     Sin,
     Cos,
@@ -33,6 +36,15 @@ enum CalculusOperations {
     Mul(Box<Derivable>),
     Div(Box<Derivable>),
     Nop
+}
+
+use std::collections::HashMap;
+
+fn get_derivative(i: CalculusOperations) -> String {
+    match i {
+        CalculusOperations::Sin => "cos".to_string(),
+        CalculusOperations::Cos => "negative sin".to_string()
+    };
 }
 
 #[derive(Debug)]
@@ -77,4 +89,6 @@ fn main() {
     let z = Derivable::new(14 as f64);
     let x = Derivable::new(15 as f64);
     println!("{:?}", z+x);
+    println!("{:?}", DERIVATIVES.get(CalculusOperations::Sin));
 }
+
