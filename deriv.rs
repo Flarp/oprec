@@ -1,9 +1,17 @@
 extern crate num;
 use std::ops::*;
+use std::rc::Rc;
 
 extern crate petgraph;
 
-type ConstNum = Option<Rc<Into<f64>>>;
+type ConstNum = Option<f64>;
+
+impl<T: Into<f64>> Add<T> for OpRec {
+    type Output = f64;
+    fn add(self, next: T) -> Self::Output {
+        self.0.add_node() 
+    }
+}
 
 struct OpRec(petgraph::graph::Graph<Ops, Ops>);
 
@@ -95,5 +103,5 @@ impl Add for Derivable {
 fn main() {
     let mut graph = petgraph::graph::Graph::<Ops, Ops>::new();
     graph.add_node(Ops::Sin);
-    println!("can compile?");
+    println!("can compile? {:?}", graph);
 }
