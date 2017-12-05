@@ -1,8 +1,14 @@
 extern crate num;
 use std::ops::*;
 
+extern crate petgraph;
+
+type ConstNum = Option<Rc<Into<f64>>>;
+
+struct OpRec(petgraph::graph::Graph<Ops, Ops>);
+
 #[derive(Debug)]
-enum CalculusOperations {
+enum Ops {
     Sin,
     Cos,
     Tan,
@@ -16,31 +22,36 @@ enum CalculusOperations {
     Acosh,
     Atanh,
     Recip,
-    PowI(Box<Derivable>),
-    PowF(Box<Derivable>),
+    PowI,
+    PowF,
     Exp,
     Exp2,
     Ln,
-    Log(Box<Derivable>),
+    Log,
     Log2,
     Log10,
     Sqrt,
     Cbrt,
     Hypot,
-    Add(Box<Derivable>),
-    Sub(Box<Derivable>),
-    Mul(Box<Derivable>),
-    Div(Box<Derivable>),
-    Nop
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Const(ConstNum)
 }
 
-
+/*
 fn get_derivative(i: CalculusOperations) -> CalculusOperations {
     match i {
         CalculusOperations::Sin => CalculusOperations::Cos,
         CalculusOperations::Cos => CalculusOperations::Mul(Box::new(Derivable::new(-1 as f64).push(CalculusOperations::Sin))),
+        CalculusOperations::Tan => CalculusOperations::PowI(Box::new(Derivable::new(2 as f64).push(CalculusOperations::Sec))),
         _ => CalculusOperations::Nop
     }
+}
+
+fn apply_derivative(chain: Derivable) {
+
 }
 
 #[derive(Debug)]
@@ -60,13 +71,13 @@ impl CalculusCons {
 
 #[derive(Debug)]
 struct Derivable {
-    num: f64,
+    num: Option<f64>,
     ops: CalculusCons
 }
 
 impl Derivable {
     fn new(x: f64) -> Derivable {
-        Derivable { num: x, ops: CalculusCons::new() }
+        Derivable { num: Some(x), ops: CalculusCons::new() }
     }
     fn push(self, i: CalculusOperations) -> Derivable {
         Derivable { num: self.num, ops: self.ops.push(i) }
@@ -80,11 +91,9 @@ impl Add for Derivable {
 
     }
 }
-
+*/
 fn main() {
-    let z = Derivable::new(14 as f64);
-    let x = Derivable::new(15 as f64);
-    println!("{:?}", z+x);
-    println!("{:?}", get_derivative(CalculusOperations::Cos));
+    let mut graph = petgraph::graph::Graph::<Ops, Ops>::new();
+    graph.add_node(Ops::Sin);
+    println!("can compile?");
 }
-
