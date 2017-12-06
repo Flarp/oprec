@@ -12,8 +12,8 @@ macro_rules! impl_oprec_op {
             fn $lower(self, mut rhs: OpRec) -> Self::Output {
                 let mut notself = self.clone();
                 let operation = notself.graph.add_node(Ops::$upper);
-                notself.graph.add_edge(notself.last, operation, Ops::$upper);
-                notself.graph.add_edge(rhs.last, operation, Ops::$upper);
+                notself.graph.add_edge(notself.last, operation, 0);
+                notself.graph.add_edge(rhs.last, operation, 0);
                 rhs.last = operation;
                 notself.last = operation;
                 notself
@@ -22,6 +22,21 @@ macro_rules! impl_oprec_op {
     }
 }
 
+macro_rules! impl_op_mut {
+    ($lower:ident, $upper:ident, $ty:ty, $discriminant:ident) => {
+        impl $upper<$ty> for OpRec {
+            fn $lower(&mut self, rhs: $ty) {
+                let rh_node = self.graph.add_node(Ops::Const(f64::from(rhs)));
+                let operation = self.graph.add_node(Ops::$discriminant);
+                self.graph.add_edge(self.last, operation, 0);
+                self.graph.add_edge(rh_node, operation, 0);
+                self.last = operation;
+            }
+        }
+    }
+}
+
+
 macro_rules! impl_oprec_method {
     ($(($lower:ident, $upper:ident)),*) => {
     impl OpRec {
@@ -29,7 +44,8 @@ macro_rules! impl_oprec_method {
             fn $lower(self) -> OpRec {
                 let mut notself = self.clone();
                 let operation = notself.graph.add_node(Ops::$upper);
-                notself.graph.add_edge(notself.last, operation, Ops::$upper);
+                notself.graph.add_edge(notself.last, operation, 0);
+                notself.last = operation;
                 notself
             }
             )*
@@ -45,8 +61,8 @@ macro_rules! impl_op {
                 let mut notself = self.clone();
                 let rh_node = notself.graph.add_node(Ops::Const(f64::from(rhs)));
                 let operation = notself.graph.add_node(Ops::$upper);
-                notself.graph.add_edge(notself.last, operation, Ops::$upper);
-                notself.graph.add_edge(rh_node, operation, Ops::$upper);
+                notself.graph.add_edge(notself.last, operation, 0);
+                notself.graph.add_edge(rh_node, operation, 0);
                 notself.last = operation;
                 notself
             }
@@ -57,11 +73,14 @@ macro_rules! impl_op {
 macro_rules! impl_type {
     ($($ty:ty),*) => {
         $(
-        impl ArbitraryNumber for $ty {}
         impl_op!(add, Add, $ty);
         impl_op!(sub, Sub, $ty);
         impl_op!(mul, Mul, $ty);
         impl_op!(div, Div, $ty);
+        impl_op_mut!(add_assign, AddAssign, $ty, Add);
+        impl_op_mut!(sub_assign, SubAssign, $ty, Sub);
+        impl_op_mut!(mul_assign, MulAssign, $ty, Mul);
+        impl_op_mut!(div_assign, DivAssign, $ty, Div);
         )*
         impl_oprec_op!(add, Add);
         impl_oprec_op!(sub, Sub);
@@ -111,25 +130,43 @@ enum Ops {
 struct OpRec {
     root: NodeIndex,
     last: NodeIndex,
-    graph: Graph<Ops, Ops>
+    graph: Graph<Ops, u8>
 }
 
 impl OpRec {
     fn new() -> OpRec {
-        let mut graph = petgraph::graph::Graph::<Ops, Ops>::new();
+        let mut graph = petgraph::graph::Graph::<Ops, u8>::new();
         let root = graph.add_node(Ops::Root);
         OpRec { graph: graph, root: root, last: root }
     }
     // atan2 and mul_add must be implemented seperate
     // from the impl_oprec_method macro because they both
     // take arguments
-    /*
-    fn atan2<T: ArbitraryNumber>(self, rhs: T) {
-        let operation = self.graph.add_node(Ops::Atan2);
-        let constant = self.graph.add_node(Ops::ConstNum(Box::new(rhs)));
-        
+    
+    fn atan2<T: Into<f64>>(self, rhs: T) -> OpRec {
+        let mut notself = self.clone();
+        let operation = notself.graph.add_node(Ops::Atan2);
+        let constant = notself.graph.add_node(Ops::Const(rhs.into()));
+        notself.graph.add_edge(notself.last, operation, 0);
+        notself.graph.add_edge(constant, operation, 0);
+        notself.last = operation;
+        notself
     }
-    */
+    
+    fn mul_add<T: Into<f64>>(self, mul: T, add: T) -> OpRec {
+        let mut notself = self.clone();
+        let mul_op = notself.graph.add_node(Ops::Mul);
+        let mul_const = notself.graph.add_node(Ops::Const(mul.into()));
+        let add_op = notself.graph.add_node(Ops::Add);
+        let add_const = notself.graph.add_node(Ops::Const(add.into()));
+        notself.graph.add_edge(notself.last, mul_op, 0);
+        notself.graph.add_edge(mul_const, mul_op, 0);
+        notself.graph.add_edge(mul_op, add_op, 0);
+        notself.graph.add_edge(add_const, add_op, 0);
+        notself.last = add_op;
+        notself
+    }
+    
 }
 
 impl_oprec_method!(
@@ -149,9 +186,7 @@ fn main() {
     let mut test = OpRec::new();
     //let mut test2 = OpRec::new();
     //test2 = test2-2;
-    test = test+4;
-    test = test-4;
-    test = test.sin();
+    test *= 4;
     //test = test*test2;
     println!("{:?}", petgraph::dot::Dot::with_config(&test.graph, &[petgraph::dot::Config::EdgeNoLabel]));
 }
