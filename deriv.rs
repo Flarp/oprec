@@ -1,19 +1,60 @@
-extern crate num;
-use std::ops::*;
-use std::rc::Rc;
-
 extern crate petgraph;
+use std::ops::*;
+use petgraph::graph::*;
 
-type ConstNum = Option<f64>;
+trait ArbitraryNumber: std::fmt::Debug {}
 
-impl<T: Into<f64>> Add<T> for OpRec {
-    type Output = f64;
-    fn add(self, next: T) -> Self::Output {
-        self.0.add_node() 
+type ConstNum = Box<ArbitraryNumber>;
+
+macro_rules! impl_oprec_op {
+    ($lower:ident, $upper:ident) => {
+        impl $upper for OpRec {
+            type Output = OpRec;
+            fn $lower(mut self, mut rhs: OpRec) -> Self::Output {
+                let operation = self.graph.add_node(Ops::$upper);
+                self.graph.add_edge(self.last, operation, Ops::$upper);
+                self.graph.add_edge(rhs.last, operation, Ops::$upper);
+                rhs.last = operation;
+                self.last = operation;
+                self
+            }
+        }
     }
 }
 
-struct OpRec(petgraph::graph::Graph<Ops, Ops>);
+macro_rules! impl_op {
+    ($lower:ident, $upper:ident, $ty:ty) => {
+        impl $upper<$ty> for OpRec {
+            type Output = OpRec;
+            fn $lower(mut self, rhs: $ty) -> Self::Output {
+                let rh_node = self.graph.add_node(Ops::Const(Box::new(rhs)));
+                let operation = self.graph.add_node(Ops::$upper);
+                self.graph.add_edge(self.last, operation, Ops::$upper);
+                self.graph.add_edge(rh_node, operation, Ops::$upper);
+                self.last = operation;
+                self
+            }
+        }
+    }
+}
+
+macro_rules! impl_type {
+    ($($ty:ty),*) => {
+        $(
+        impl ArbitraryNumber for $ty {}
+        impl_op!(add, Add, $ty);
+        impl_op!(sub, Sub, $ty);
+        impl_op!(mul, Mul, $ty);
+        impl_op!(div, Div, $ty);
+        )*
+        impl_oprec_op!(add, Add);
+        impl_oprec_op!(sub, Sub);
+        impl_oprec_op!(mul, Mul);
+        impl_oprec_op!(div, Div);
+    }
+}
+
+impl_type!(f64, f32, i8, i16, i32, i64);
 
 #[derive(Debug)]
 enum Ops {
@@ -45,63 +86,37 @@ enum Ops {
     Sub,
     Mul,
     Div,
-    Const(ConstNum)
-}
-
-/*
-fn get_derivative(i: CalculusOperations) -> CalculusOperations {
-    match i {
-        CalculusOperations::Sin => CalculusOperations::Cos,
-        CalculusOperations::Cos => CalculusOperations::Mul(Box::new(Derivable::new(-1 as f64).push(CalculusOperations::Sin))),
-        CalculusOperations::Tan => CalculusOperations::PowI(Box::new(Derivable::new(2 as f64).push(CalculusOperations::Sec))),
-        _ => CalculusOperations::Nop
-    }
-}
-
-fn apply_derivative(chain: Derivable) {
-
+    Const(ConstNum),
+    Root
 }
 
 #[derive(Debug)]
-struct CalculusCons {
-    curr_op: CalculusOperations,
-    next_op: Option<Box<CalculusCons>>
+struct OpRec {
+    root: NodeIndex,
+    last: NodeIndex,
+    graph: Graph<Ops, Ops>
 }
 
-impl CalculusCons {
-    fn new() -> CalculusCons {
-        CalculusCons { curr_op: CalculusOperations::Nop, next_op: None }
+impl OpRec {
+    fn new() -> OpRec {
+        let mut graph = petgraph::graph::Graph::<Ops, Ops>::new();
+        let root = graph.add_node(Ops::Root);
+        OpRec { graph: graph, root: root, last: root }
     }
-    fn push(self, i: CalculusOperations) -> CalculusCons {
-        CalculusCons { curr_op: i, next_op: Some(Box::new(self)) }
-    }
-}
-
-#[derive(Debug)]
-struct Derivable {
-    num: Option<f64>,
-    ops: CalculusCons
-}
-
-impl Derivable {
-    fn new(x: f64) -> Derivable {
-        Derivable { num: Some(x), ops: CalculusCons::new() }
-    }
-    fn push(self, i: CalculusOperations) -> Derivable {
-        Derivable { num: self.num, ops: self.ops.push(i) }
+    fn sin(mut self) -> OpRec {
+        let sin = self.graph.add_node(Ops::Sin);
+        self.graph.add_edge(self.last, sin, Ops::Sin);
+        self
     }
 }
 
-impl Add for Derivable {
-    type Output = Derivable;
-    fn add(self, next: Derivable) -> Self::Output {
-        self.push(CalculusOperations::Add(Box::new(next)))
-
-    }
-}
-*/
 fn main() {
-    let mut graph = petgraph::graph::Graph::<Ops, Ops>::new();
-    graph.add_node(Ops::Sin);
-    println!("can compile? {:?}", graph);
+    let mut test = OpRec::new();
+    let mut test2 = OpRec::new();
+    test2 = test2-2;
+    test = test+4;
+    test = test-4;
+    test = test.sin();
+    test = test*test2;
+    println!("{:?}", petgraph::dot::Dot::with_config(&test.graph, &[petgraph::dot::Config::EdgeNoLabel]));
 }
