@@ -1,19 +1,9 @@
 #![feature(trace_macros)]
-trace_macros!(true);
+//trace_macros!(true);
 
 extern crate petgraph;
 use std::ops::*;
 use petgraph::graph::*;
-
-trait ArbitraryNumber: std::fmt::Debug {}
-
-type ConstNum = Box<ArbitraryNumber>;
-
-impl Clone for ConstNum {
-    fn clone(&self) -> Self {
-        
-    }
-}
 
 macro_rules! impl_oprec_op {
     ($lower:ident, $upper:ident) => {
@@ -53,7 +43,7 @@ macro_rules! impl_op {
             type Output = OpRec;
             fn $lower(self, rhs: $ty) -> Self::Output {
                 let mut notself = self.clone();
-                let rh_node = notself.graph.add_node(Ops::Const(Box::new(rhs)));
+                let rh_node = notself.graph.add_node(Ops::Const(f64::from(rhs)));
                 let operation = notself.graph.add_node(Ops::$upper);
                 notself.graph.add_edge(notself.last, operation, Ops::$upper);
                 notself.graph.add_edge(rh_node, operation, Ops::$upper);
@@ -80,7 +70,7 @@ macro_rules! impl_type {
     }
 }
 
-impl_type!(f64, f32, i8, i16, i32, i64);
+impl_type!(f64, f32, i8, i16, i32);
 
 #[derive(Debug, Clone)]
 enum Ops {
@@ -113,7 +103,7 @@ enum Ops {
     Sub,
     Mul,
     Div,
-    Const(ConstNum),
+    Const(f64),
     Root
 }
 
