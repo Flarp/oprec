@@ -184,9 +184,7 @@ impl_oprec_method!(
 
 fn main() {
     let mut test = OpRec::new();
+    let mut t3st = OpRec::new();
     //let mut test2 = OpRec::new();
-    //test2 = test2-2;
-    test *= 4;
-    //test = test*test2;
-    println!("{:?}", petgraph::dot::Dot::with_config(&test.graph, &[petgraph::dot::Config::EdgeNoLabel]));
+    println!("{:?}", petgraph::dot::Dot::with_config(&t3st.graph, &[petgraph::dot::Config::EdgeNoLabel]));
 }
