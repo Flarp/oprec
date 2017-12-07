@@ -1,5 +1,5 @@
 #![feature(trace_macros)]
-//trace_macros!(true);
+trace_macros!(true);
 
 extern crate petgraph;
 use std::ops::*;
@@ -60,6 +60,19 @@ macro_rules! impl_op {
             fn $lower(self, rhs: $ty) -> Self::Output {
                 let mut notself = self.clone();
                 let rh_node = notself.graph.add_node(Ops::Const(f64::from(rhs)));
+                let operation = notself.graph.add_node(Ops::$upper);
+                notself.graph.add_edge(notself.last, operation, 0);
+                notself.graph.add_edge(rh_node, operation, 0);
+                notself.last = operation;
+                notself
+            }
+        }
+        
+        impl $upper<OpRec> for $ty {
+            type Output = OpRec;
+            fn $lower(self, rhs: OpRec) -> Self::Output {
+                let mut notself = rhs.clone();
+                let rh_node = notself.graph.add_node(Ops::Const(f64::from(self)));
                 let operation = notself.graph.add_node(Ops::$upper);
                 notself.graph.add_edge(notself.last, operation, 0);
                 notself.graph.add_edge(rh_node, operation, 0);
@@ -184,7 +197,8 @@ impl_oprec_method!(
 
 fn main() {
     let mut test = OpRec::new();
-    test += 3;
+    test = (8*test.sin())+3;
     //let mut test2 = OpRec::new();
+    //test.graph.add_node(OpRec::new().graph);
     println!("{:?}", petgraph::dot::Dot::with_config(&test.graph, &[petgraph::dot::Config::EdgeNoLabel]));
 }
