@@ -4,6 +4,7 @@
 extern crate petgraph;
 use std::ops::*;
 use petgraph::graph::*;
+use std::collections::HashMap;
 
 macro_rules! impl_oprec_op {
     ($lower:ident, $upper:ident) => {
@@ -71,6 +72,10 @@ macro_rules! impl_op {
         impl $upper<OpRec> for $ty {
             type Output = OpRec;
             fn $lower(self, rhs: OpRec) -> Self::Output {
+                let mut nodemap: HashMap<NodeIndex, NodeIndex> = HashMap::new();
+                rhs.graph.node_indices().map(|index| {
+                    let node = "nothing right now";
+                })
                 let mut notself = rhs.clone();
                 let rh_node = notself.graph.add_node(Ops::Const(f64::from(self)));
                 let operation = notself.graph.add_node(Ops::$upper);
