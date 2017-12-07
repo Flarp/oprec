@@ -1,5 +1,5 @@
-#![feature(trace_macros)]
-trace_macros!(true);
+//#![feature(trace_macros)]
+//trace_macros!(true);
 
 extern crate petgraph;
 use std::ops::*;
