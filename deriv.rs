@@ -89,7 +89,7 @@ macro_rules! impl_type {
     }
 }
 
-impl_type!(f64, f32, i8, i16, i32);
+impl_type!(f64, f32, i8, i16, i32, u8, u16, u32);
 
 #[derive(Debug, Clone)]
 enum Ops {
@@ -184,7 +184,7 @@ impl_oprec_method!(
 
 fn main() {
     let mut test = OpRec::new();
-    let mut t3st = OpRec::new();
+    test += 3;
     //let mut test2 = OpRec::new();
-    println!("{:?}", petgraph::dot::Dot::with_config(&t3st.graph, &[petgraph::dot::Config::EdgeNoLabel]));
+    println!("{:?}", petgraph::dot::Dot::with_config(&test.graph, &[petgraph::dot::Config::EdgeNoLabel]));
 }
