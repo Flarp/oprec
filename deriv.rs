@@ -5,19 +5,64 @@ extern crate petgraph;
 use std::ops::*;
 use petgraph::graph::*;
 use std::collections::HashMap;
+use petgraph::visit::EdgeRef;
 
 macro_rules! impl_oprec_op {
     ($lower:ident, $upper:ident) => {
         impl $upper for OpRec {
             type Output = OpRec;
-            fn $lower(self, mut rhs: OpRec) -> Self::Output {
+            fn $lower(self, rhs: OpRec) -> Self::Output {
                 let mut notself = self.clone();
                 let operation = notself.graph.add_node(Ops::$upper);
+                //notself.graph.add_edge(notself.last, operation, 0);
+                //notself.graph.add_edge(rhs.last, operation, 0);
+                //rhs.last = operation;
+                let mut node_mappings: HashMap<NodeIndex, NodeIndex> = HashMap::new();
+                rhs.graph.node_indices().map(|index| {
+                    let clone_node = rhs.graph[index].clone();
+                    let final_index = notself.graph.add_node(clone_node.clone());
+                    if clone_node == Ops::Root {
+                        notself.roots.push(final_index);
+                    }
+                    node_mappings.insert(index, final_index);
+                    
+                }).count(); // to consume it;
+                rhs.graph.edge_references().map(|edge| {
+                    notself.graph.add_edge(node_mappings.get(&edge.source()).unwrap().clone(), node_mappings.get(&edge.target()).unwrap().clone(), 0);
+                }).count(); // to consume it
+                notself.graph.add_edge(node_mappings.get(&rhs.last).unwrap().clone(), operation, 0);
                 notself.graph.add_edge(notself.last, operation, 0);
-                notself.graph.add_edge(rhs.last, operation, 0);
-                rhs.last = operation;
                 notself.last = operation;
                 notself
+            }
+        }
+    }
+}
+
+macro_rules! impl_oprec_op_mut {
+    ($lower:ident, $upper:ident, $discriminant:ident) => {
+        impl $upper for OpRec {
+            fn $lower(&mut self, rhs: OpRec) {
+                let operation = self.graph.add_node(Ops::$discriminant);
+                //notself.graph.add_edge(notself.last, operation, 0);
+                //notself.graph.add_edge(rhs.last, operation, 0);
+                //rhs.last = operation;
+                let mut node_mappings: HashMap<NodeIndex, NodeIndex> = HashMap::new();
+                rhs.graph.node_indices().map(|index| {
+                    let clone_node = rhs.graph[index].clone();
+                    let final_index = self.graph.add_node(clone_node.clone());
+                    if clone_node == Ops::Root {
+                        self.roots.push(final_index);
+                    }
+                    node_mappings.insert(index, final_index);
+                    
+                }).count(); // to consume it;
+                rhs.graph.edge_references().map(|edge| {
+                    self.graph.add_edge(node_mappings.get(&edge.source()).unwrap().clone(), node_mappings.get(&edge.target()).unwrap().clone(), 0);
+                }).count(); // to consume it
+                self.graph.add_edge(node_mappings.get(&rhs.last).unwrap().clone(), operation, 0);
+                self.graph.add_edge(self.last, operation, 0);
+                self.last = operation;
             }
         }
     }
@@ -72,10 +117,6 @@ macro_rules! impl_op {
         impl $upper<OpRec> for $ty {
             type Output = OpRec;
             fn $lower(self, rhs: OpRec) -> Self::Output {
-                let mut nodemap: HashMap<NodeIndex, NodeIndex> = HashMap::new();
-                rhs.graph.node_indices().map(|index| {
-                    let node = "nothing right now";
-                })
                 let mut notself = rhs.clone();
                 let rh_node = notself.graph.add_node(Ops::Const(f64::from(self)));
                 let operation = notself.graph.add_node(Ops::$upper);
@@ -104,12 +145,16 @@ macro_rules! impl_type {
         impl_oprec_op!(sub, Sub);
         impl_oprec_op!(mul, Mul);
         impl_oprec_op!(div, Div);
+        impl_oprec_op_mut!(add_assign, AddAssign, Add);
+        impl_oprec_op_mut!(sub_assign, SubAssign, Sub);
+        impl_oprec_op_mut!(mul_assign, MulAssign, Mul);
+        impl_oprec_op_mut!(div_assign, DivAssign, Div);
     }
 }
 
 impl_type!(f64, f32, i8, i16, i32, u8, u16, u32);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 enum Ops {
     Sin,
     Cos,
@@ -146,7 +191,7 @@ enum Ops {
 
 #[derive(Debug, Clone)]
 struct OpRec {
-    root: NodeIndex,
+    roots: Vec<NodeIndex>,
     last: NodeIndex,
     graph: Graph<Ops, u8>
 }
@@ -155,7 +200,7 @@ impl OpRec {
     fn new() -> OpRec {
         let mut graph = petgraph::graph::Graph::<Ops, u8>::new();
         let root = graph.add_node(Ops::Root);
-        OpRec { graph: graph, root: root, last: root }
+        OpRec { graph: graph, roots: vec![root], last: root }
     }
     // atan2 and mul_add must be implemented seperate
     // from the impl_oprec_method macro because they both
@@ -203,6 +248,9 @@ impl_oprec_method!(
 fn main() {
     let mut test = OpRec::new();
     test = (8*test.sin())+3;
+    let mut test2 = OpRec::new();
+    test2 = test2.sin();
+    test += test2;
     //let mut test2 = OpRec::new();
     //test.graph.add_node(OpRec::new().graph);
     println!("{:?}", petgraph::dot::Dot::with_config(&test.graph, &[petgraph::dot::Config::EdgeNoLabel]));
