@@ -1,10 +1,10 @@
-//#![feature(trace_macros)]
+#![feature(trace_macros, conservative_impl_trait)]
 //trace_macros!(true);
 
 extern crate petgraph;
 use std::ops::*;
-use petgraph::graph::*;
 use std::collections::HashMap;
+use petgraph::graph::*;
 use petgraph::visit::EdgeRef;
 
 macro_rules! impl_oprec_op {
@@ -19,7 +19,8 @@ macro_rules! impl_oprec_op {
                     let clone_node = rhs.graph[index].clone();
                     let final_index = notself.graph.add_node(clone_node.clone());
                     if clone_node == Ops::Root {
-                        notself.roots.push(final_index);
+                        let intersection = RootIntersection { root: final_index, intersection: Some(operation) };
+                        notself.roots.push(intersection);
                     }
                     node_mappings.insert(index, final_index);
                     
@@ -46,7 +47,8 @@ macro_rules! impl_oprec_op_mut {
                     let clone_node = rhs.graph[index].clone();
                     let final_index = self.graph.add_node(clone_node.clone());
                     if clone_node == Ops::Root {
-                        self.roots.push(final_index);
+                        let intersection = RootIntersection { root: final_index, intersection: Some(operation) };
+                        self.roots.push(intersection);
                     }
                     node_mappings.insert(index, final_index);
                     
@@ -188,8 +190,14 @@ enum Ops {
 }
 
 #[derive(Debug, Clone)]
+struct RootIntersection {
+    root: NodeIndex,
+    intersection: Option<NodeIndex>
+}
+
+#[derive(Debug, Clone)]
 struct OpRec {
-    roots: Vec<NodeIndex>,
+    roots: Vec<RootIntersection>,
     last: NodeIndex,
     graph: Graph<Ops, u8>
 }
@@ -198,7 +206,8 @@ impl OpRec {
     fn new() -> OpRec {
         let mut graph = petgraph::graph::Graph::<Ops, u8>::new();
         let root = graph.add_node(Ops::Root);
-        OpRec { graph: graph, roots: vec![root], last: root }
+        let intersect = RootIntersection { root: root, intersection: None };
+        OpRec { graph: graph, roots: vec![intersect], last: root }
     }
     // atan2 and mul_add must be implemented seperate
     // from the impl_oprec_method macro because they both
@@ -216,6 +225,11 @@ impl OpRec {
         notself.graph.add_edge(add_const, add_op, 0);
         notself.last = add_op;
         notself
+    }
+    
+    fn functify<T: Into<f64>>(self, a: T) -> impl Fn(f64) -> f64 {
+        let z = a.into();
+        move |x| x + z
     }
     
 }
@@ -243,4 +257,6 @@ fn main() {
     test3 = test3.sin().cos().tan().powi(3);
     test -= test3;
     println!("{:?}", petgraph::dot::Dot::with_config(&test.graph, &[petgraph::dot::Config::EdgeNoLabel]));
+    let mut test4 = OpRec::new();
+    println!("{:?}", test4.functify(6)(4.into()));
 }
