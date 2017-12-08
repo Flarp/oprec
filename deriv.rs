@@ -13,24 +13,7 @@ macro_rules! impl_oprec_op {
             type Output = OpRec;
             fn $lower(self, rhs: OpRec) -> Self::Output {
                 let mut notself = self.clone();
-                let operation = notself.graph.add_node(Ops::$upper);
-                let mut node_mappings: HashMap<NodeIndex, NodeIndex> = HashMap::new();
-                rhs.graph.node_indices().map(|index| {
-                    let clone_node = rhs.graph[index].clone();
-                    let final_index = notself.graph.add_node(clone_node.clone());
-                    if clone_node == Ops::Root {
-                        let intersection = RootIntersection { root: final_index, intersection: Some(operation) };
-                        notself.roots.push(intersection);
-                    }
-                    node_mappings.insert(index, final_index);
-                    
-                }).count(); // to consume it;
-                rhs.graph.edge_references().map(|edge| {
-                    notself.graph.add_edge(node_mappings.get(&edge.source()).unwrap().clone(), node_mappings.get(&edge.target()).unwrap().clone(), 0);
-                }).count(); // to consume it
-                notself.graph.add_edge(node_mappings.get(&rhs.last).unwrap().clone(), operation, 0);
-                notself.graph.add_edge(notself.last, operation, 0);
-                notself.last = operation;
+                impl_oprec_op_inner!($upper, notself, rhs);
                 notself
             }
         }
@@ -41,26 +24,32 @@ macro_rules! impl_oprec_op_mut {
     ($lower:ident, $upper:ident, $discriminant:ident) => {
         impl $upper for OpRec {
             fn $lower(&mut self, rhs: OpRec) {
-                let operation = self.graph.add_node(Ops::$discriminant);
-                let mut node_mappings: HashMap<NodeIndex, NodeIndex> = HashMap::new();
-                rhs.graph.node_indices().map(|index| {
-                    let clone_node = rhs.graph[index].clone();
-                    let final_index = self.graph.add_node(clone_node.clone());
-                    if clone_node == Ops::Root {
-                        let intersection = RootIntersection { root: final_index, intersection: Some(operation) };
-                        self.roots.push(intersection);
-                    }
-                    node_mappings.insert(index, final_index);
-                    
-                }).count(); // to consume it;
-                rhs.graph.edge_references().map(|edge| {
-                    self.graph.add_edge(node_mappings.get(&edge.source()).unwrap().clone(), node_mappings.get(&edge.target()).unwrap().clone(), 0);
-                }).count(); // to consume it
-                self.graph.add_edge(node_mappings.get(&rhs.last).unwrap().clone(), operation, 0);
-                self.graph.add_edge(self.last, operation, 0);
-                self.last = operation;
+                impl_oprec_op_inner!($discriminant, self, rhs);
             }
         }
+    }
+}
+
+macro_rules! impl_oprec_op_inner {
+    ($discriminant:ident, $selfi:ident, $rhs:ident) => {
+        let operation = $selfi.graph.add_node(Ops::$discriminant);
+        let mut node_mappings: HashMap<NodeIndex, NodeIndex> = HashMap::new();
+        $rhs.graph.node_indices().map(|index| {
+            let clone_node = $rhs.graph[index].clone();
+            let final_index = $selfi.graph.add_node(clone_node.clone());
+            if clone_node == Ops::Root {
+                let intersection = RootIntersection { root: final_index, intersection: Some(operation) };
+                $selfi.roots.push(intersection);
+            }
+            node_mappings.insert(index, final_index);
+            
+        }).count(); // to consume it;
+        $rhs.graph.edge_references().map(|edge| {
+            $selfi.graph.add_edge(node_mappings.get(&edge.source()).unwrap().clone(), node_mappings.get(&edge.target()).unwrap().clone(), 0);
+        }).count(); // to consume it
+        $selfi.graph.add_edge(node_mappings.get(&$rhs.last).unwrap().clone(), operation, 0);
+        $selfi.graph.add_edge($selfi.last, operation, 0);
+        $selfi.last = operation;
     }
 }
 
@@ -209,9 +198,8 @@ impl OpRec {
         let intersect = RootIntersection { root: root, intersection: None };
         OpRec { graph: graph, roots: vec![intersect], last: root }
     }
-    // atan2 and mul_add must be implemented seperate
-    // from the impl_oprec_method macro because they both
-    // take arguments
+    // mul_add must be implemented seperatly because
+    // it is two operations in one function
     
     fn mul_add<T: Into<f64>>(self, mul: T, add: T) -> OpRec {
         let mut notself = self.clone();
