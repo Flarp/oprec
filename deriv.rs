@@ -41,9 +41,6 @@ macro_rules! impl_oprec_op_mut {
         impl $upper for OpRec {
             fn $lower(&mut self, rhs: OpRec) {
                 let operation = self.graph.add_node(Ops::$discriminant);
-                //notself.graph.add_edge(notself.last, operation, 0);
-                //notself.graph.add_edge(rhs.last, operation, 0);
-                //rhs.last = operation;
                 let mut node_mappings: HashMap<NodeIndex, NodeIndex> = HashMap::new();
                 rhs.graph.node_indices().map(|index| {
                     let clone_node = rhs.graph[index].clone();
