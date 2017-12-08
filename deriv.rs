@@ -14,9 +14,6 @@ macro_rules! impl_oprec_op {
             fn $lower(self, rhs: OpRec) -> Self::Output {
                 let mut notself = self.clone();
                 let operation = notself.graph.add_node(Ops::$upper);
-                //notself.graph.add_edge(notself.last, operation, 0);
-                //notself.graph.add_edge(rhs.last, operation, 0);
-                //rhs.last = operation;
                 let mut node_mappings: HashMap<NodeIndex, NodeIndex> = HashMap::new();
                 rhs.graph.node_indices().map(|index| {
                     let clone_node = rhs.graph[index].clone();
@@ -251,7 +248,5 @@ fn main() {
     let mut test2 = OpRec::new();
     test2 = test2.sin();
     test += test2;
-    //let mut test2 = OpRec::new();
-    //test.graph.add_node(OpRec::new().graph);
     println!("{:?}", petgraph::dot::Dot::with_config(&test.graph, &[petgraph::dot::Config::EdgeNoLabel]));
 }
