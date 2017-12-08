@@ -78,13 +78,17 @@ macro_rules! impl_op_mut {
 
 
 macro_rules! impl_oprec_method {
-    ($(($lower:ident, $upper:ident)),*) => {
+    ($(($lower:ident, $upper:ident $(, $var:ident : $ty:ty)*)),*) => {
     impl OpRec {
             $(
-            fn $lower(self) -> OpRec {
+            fn $lower(self $(, $var : $ty)*) -> OpRec {
                 let mut notself = self.clone();
                 let operation = notself.graph.add_node(Ops::$upper);
                 notself.graph.add_edge(notself.last, operation, 0);
+                $(
+                let rh_node = notself.graph.add_node(Ops::Const(f64::from($var)));
+                notself.graph.add_edge(rh_node, operation, 0);
+                )*
                 notself.last = operation;
                 notself
             }
@@ -200,16 +204,6 @@ impl OpRec {
     // from the impl_oprec_method macro because they both
     // take arguments
     
-    fn atan2<T: Into<f64>>(self, rhs: T) -> OpRec {
-        let mut notself = self.clone();
-        let operation = notself.graph.add_node(Ops::Atan2);
-        let constant = notself.graph.add_node(Ops::Const(rhs.into()));
-        notself.graph.add_edge(notself.last, operation, 0);
-        notself.graph.add_edge(constant, operation, 0);
-        notself.last = operation;
-        notself
-    }
-    
     fn mul_add<T: Into<f64>>(self, mul: T, add: T) -> OpRec {
         let mut notself = self.clone();
         let mul_op = notself.graph.add_node(Ops::Mul);
@@ -228,12 +222,12 @@ impl OpRec {
 
 impl_oprec_method!(
     (sin, Sin), (cos, Cos), (tan, Tan), 
-    (asin, Asin), (acos, Acos), (atan, Atan),
+    (asin, Asin), (acos, Acos), (atan, Atan), (atan2, Atan2, float: f64),
     (sinh, Sinh), (cosh, Cosh), (tanh, Tanh),
     (asinh, Asinh), (acosh, Acosh), (atanh, Atanh),
-    (powf, PowF), (powi, PowI),
+    (powf, PowF, float: f64), (powi, PowI, int: i32),
     (exp, Exp), (exp2, Exp2),
-    (ln, Ln), (log, Log), (log10, Log10), (log2, Log2),
+    (ln, Ln), (log, Log, base: f64), (log10, Log10), (log2, Log2),
     (recip, Recip),
     (sqrt, Sqrt), (cbrt, Cbrt)
 );
@@ -245,5 +239,8 @@ fn main() {
     let mut test2 = OpRec::new();
     test2 = test2.sin();
     test += test2;
+    let mut test3 = OpRec::new();
+    test3 = test3.sin().cos().tan().powi(3);
+    test -= test3;
     println!("{:?}", petgraph::dot::Dot::with_config(&test.graph, &[petgraph::dot::Config::EdgeNoLabel]));
 }
