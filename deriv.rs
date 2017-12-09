@@ -191,6 +191,15 @@ struct OpRec {
     graph: Graph<Ops, u8>
 }
 
+#[derive(Debug, Clone)]
+struct PolynomialTerm {
+    exponent: f64,
+    coefficient: f64,
+    number: Option<f64>
+}
+
+type Polynomial = Vec<PolynomialTerm>;
+
 impl OpRec {
     fn new() -> OpRec {
         let mut graph = petgraph::graph::Graph::<Ops, u8>::new();
