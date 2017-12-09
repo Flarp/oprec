@@ -70,19 +70,39 @@ macro_rules! impl_op_mut {
 
 macro_rules! impl_oprec_method {
     ($(($lower:ident, $upper:ident $(, $var:ident : $ty:ty)*)),*) => {
-    impl OpRec {
-            $(
-            fn $lower(self $(, $var : $ty)*) -> OpRec {
-                let mut notself = self.clone();
-                let operation = notself.graph.add_node(Ops::$upper);
-                notself.graph.add_edge(notself.last, operation, 0);
+        impl OpRec {
                 $(
-                let rh_node = notself.graph.add_node(Ops::Const(f64::from($var)));
-                notself.graph.add_edge(rh_node, operation, 0);
+                fn $lower(self $(, $var : $ty)*) -> OpRec {
+                    let mut notself = self.clone();
+                    let operation = notself.graph.add_node(Ops::$upper);
+                    notself.graph.add_edge(notself.last, operation, 0);
+                    $(
+                    let rh_node = notself.graph.add_node(Ops::Const(f64::from($var)));
+                    notself.graph.add_edge(rh_node, operation, 0);
+                    )*
+                    notself.last = operation;
+                    notself
+                }
                 )*
-                notself.last = operation;
-                notself
             }
+        trait OpRecMath {
+            $(
+                fn $lower(self $(, $var : $ty)*) -> Self; 
+            )*
+        }
+        
+        impl OpRecMath for f64 {
+            $(
+                fn $lower(self $(, $var : $ty)*) -> f64 {
+                    f64::$lower(self $(, $var)*)
+                }
+            )*
+        }
+        impl OpRecMath for OpRec {
+            $(
+                fn $lower(self $(, $var : $ty)*) -> OpRec {
+                    OpRec::$lower(self $(, $var)*)
+                }
             )*
         }
     }
@@ -188,7 +208,8 @@ struct RootIntersection {
 struct OpRec {
     roots: Vec<RootIntersection>,
     last: NodeIndex,
-    graph: Graph<Ops, u8>
+    graph: Graph<Ops, u8>,
+    limit_bound: u64
 }
 
 #[derive(Debug, Clone)]
@@ -205,7 +226,13 @@ impl OpRec {
         let mut graph = petgraph::graph::Graph::<Ops, u8>::new();
         let root = graph.add_node(Ops::Root);
         let intersect = RootIntersection { root: root, intersection: None };
-        OpRec { graph: graph, roots: vec![intersect], last: root }
+        OpRec { graph: graph, roots: vec![intersect], last: root, limit_bound: 1_000_000u64 }
+    }
+    
+    fn limit_bound(self, x: u64) -> OpRec {
+        let mut notself = self.clone();
+        notself.limit_bound = x;
+        notself
     }
     // mul_add must be implemented seperatly because
     // it is two operations in one function
@@ -243,9 +270,20 @@ impl_oprec_method!(
     (sqrt, Sqrt), (cbrt, Cbrt)
 );
 
+impl From<f64> for OpRec {
+    fn from(x: f64) -> OpRec {
+        let mut graph = petgraph::graph::Graph::<Ops, u8>::new();
+        let constant = graph.add_node(Ops::Const(x));
+        OpRec { graph: graph, roots: vec![], last: constant, limit_bound: 1_000_000u64 }
+    }
+}
+
+fn general_thing(x: OpRec) -> OpRec {
+    x.clone()+x.sin()+OpRec::from(1f64)
+}
 
 fn main() {
-    let mut test = OpRec::new();
+    let mut test = OpRec::new().limit_bound(5u64);;
     test = (8*test.sin())+3;
     let mut test2 = OpRec::new();
     test2 = test2.sin();
@@ -253,7 +291,6 @@ fn main() {
     let mut test3 = OpRec::new();
     test3 = test3.sin().cos().tan().powi(3);
     test -= test3;
+    test = general_thing(test);
     println!("{:?}", petgraph::dot::Dot::with_config(&test.graph, &[petgraph::dot::Config::EdgeNoLabel]));
-    let mut test4 = OpRec::new();
-    println!("{:?}", test4.functify(6)(4.into()));
 }
