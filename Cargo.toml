@@ -1,0 +1,8 @@
+[package]
+name = "oprec"
+version = "0.0.1"
+authors = ["flurpdadurp@gmail.com"]
+description = "Calculus crate that analyzes and transforms mathematical functions."
+
+[dependencies]
+petgraph = "0.4.10"
