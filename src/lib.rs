@@ -17,6 +17,23 @@ macro_rules! impl_oprec_op {
                 notself
             }
         }
+        impl $upper for OpRecArg {
+            type Output = OpRecArg;
+            fn $lower(self, rhs: OpRecArg) -> Self::Output {
+                let mut notself = self.clone();
+                notself = match notself.clone() {
+                    OpRecArg::Const(x) => match rhs {
+                        OpRecArg::Const(y) => OpRecArg::Const(x.$lower(y)),
+                        OpRecArg::Rec(y) => OpRecArg::Rec(OpRec::from(x).$lower(y))
+                    },
+                    OpRecArg::Rec(x) => match rhs {
+                        OpRecArg::Rec(y) => OpRecArg::Rec(x.$lower(y)),
+                        OpRecArg::Const(y) => OpRecArg::Rec(x.$lower(y))
+                    }
+                };
+                notself
+            }
+        }
     }
 }
 
@@ -27,7 +44,43 @@ macro_rules! impl_oprec_op_mut {
                 impl_oprec_op_inner!($discriminant, self, rhs);
             }
         }
+        
+        impl $upper for OpRecArg {
+            fn $lower(&mut self, rhs: OpRecArg) {
+                *self = match self.clone() {
+                    OpRecArg::Const(mut x) => match rhs {
+                        OpRecArg::Const(y) => {
+                            x.$lower(y);
+                            OpRecArg::Const(x)
+                        },
+                        OpRecArg::Rec(y) => {
+                            let mut z = OpRec::from(x);
+                            z.$lower(y);
+                            OpRecArg::Rec(z)
+                        }
+                    },
+                    OpRecArg::Rec(mut x) => match rhs {
+                        OpRecArg::Rec(y) => {
+                            x.$lower(y);
+                            OpRecArg::Rec(x)
+                        },
+                        OpRecArg::Const(y) => {
+                            x.$lower(y);
+                            OpRecArg::Rec(x)
+                        }
+                    }
+                };
+            }
+        }
+        /*
+        impl $upper for OpRecArg {
+            fn $lower(&mut self, rhs: OpRecArg) {
+                impl_oparg_op_inner!($lower, self, rhs);
+            }
+        }
+        */
     }
+    
 }
 
 macro_rules! impl_oprec_op_inner {
@@ -57,11 +110,22 @@ macro_rules! impl_op_mut {
     ($lower:ident, $upper:ident, $ty:ty, $discriminant:ident) => {
         impl $upper<$ty> for OpRec {
             fn $lower(&mut self, rhs: $ty) {
-                let rh_node = self.graph.add_node(Ops::Const(f64::from(rhs)));
-                let operation = self.graph.add_node(Ops::$discriminant);
-                self.graph.add_edge(self.last, operation, 0);
-                self.graph.add_edge(rh_node, operation, 0);
-                self.last = operation;
+                impl_op_inner!($upper, self, $discriminant, rhs);
+            }
+        }
+        
+        impl $upper<$ty> for OpRecArg {
+            fn $lower(&mut self, rhs: $ty) {
+                *self = match self.clone() {
+                    OpRecArg::Const(mut x) => {
+                        x.$lower(f64::from(rhs));
+                        OpRecArg::Const(x)
+                    },
+                    OpRecArg::Rec(mut x) => {
+                        x.$lower(rhs);
+                        OpRecArg::Rec(x)
+                    }
+                };
             }
         }
     }
@@ -71,40 +135,40 @@ macro_rules! impl_op_mut {
 macro_rules! impl_oprec_method {
     ($(($lower:ident, $upper:ident $(, $var:ident : $ty:ty)*)),*) => {
         impl OpRec {
+            $(
+            fn $lower(self $(, $var : $ty)*) -> OpRec {
+                let mut notself = self.clone();
+                let operation = notself.graph.add_node(Ops::$upper);
+                notself.graph.add_edge(notself.last, operation, 0);
                 $(
-                fn $lower(self $(, $var : $ty)*) -> OpRec {
-                    let mut notself = self.clone();
-                    let operation = notself.graph.add_node(Ops::$upper);
-                    notself.graph.add_edge(notself.last, operation, 0);
-                    $(
-                    let rh_node = notself.graph.add_node(Ops::Const(f64::from($var)));
-                    notself.graph.add_edge(rh_node, operation, 0);
-                    )*
-                    notself.last = operation;
-                    notself
-                }
+                let rh_node = notself.graph.add_node(Ops::Const(f64::from($var)));
+                notself.graph.add_edge(rh_node, operation, 0);
                 )*
+                notself.last = operation;
+                notself
             }
-        trait OpRecMath {
-            $(
-                fn $lower(self $(, $var : $ty)*) -> Self; 
             )*
         }
-        
-        impl OpRecMath for f64 {
+        impl OpRecArg {
             $(
-                fn $lower(self $(, $var : $ty)*) -> f64 {
-                    f64::$lower(self $(, $var)*)
+            fn $lower(self $(, $var : $ty)*) -> OpRecArg {
+                match self {
+                    OpRecArg::Rec(x) => OpRecArg::Rec(x.$lower($($var)*)),
+                    OpRecArg::Const(x) => OpRecArg::Const(x.$lower($($var)*))
                 }
+            }
             )*
         }
-        impl OpRecMath for OpRec {
-            $(
-                fn $lower(self $(, $var : $ty)*) -> OpRec {
-                    OpRec::$lower(self $(, $var)*)
-                }
-            )*
-        }
+    }
+}
+
+macro_rules! impl_op_inner {
+    ($upper:ident, $selfi:ident, $discriminant:ident, $rhs:ident) => {
+        let rh_node = $selfi.graph.add_node(Ops::Const(f64::from($rhs)));
+        let operation = $selfi.graph.add_node(Ops::$discriminant);
+        $selfi.graph.add_edge($selfi.last, operation, 0);
+        $selfi.graph.add_edge(rh_node, operation, 0);
+        $selfi.last = operation;
     }
 }
 
@@ -114,15 +178,24 @@ macro_rules! impl_op {
             type Output = OpRec;
             fn $lower(self, rhs: $ty) -> Self::Output {
                 let mut notself = self.clone();
-                let rh_node = notself.graph.add_node(Ops::Const(f64::from(rhs)));
-                let operation = notself.graph.add_node(Ops::$upper);
-                notself.graph.add_edge(notself.last, operation, 0);
-                notself.graph.add_edge(rh_node, operation, 0);
-                notself.last = operation;
+                impl_op_inner!($upper, notself, $upper, rhs);
                 notself
             }
         }
         
+        
+        impl $upper<$ty> for OpRecArg {
+            type Output = OpRecArg;
+            fn $lower(self, rhs: $ty) -> Self::Output {
+                match self {
+                    OpRecArg::Const(x) => OpRecArg::Const(x.$lower(f64::from(rhs))),
+                    OpRecArg::Rec(x) => OpRecArg::Rec(x.$lower(rhs))
+                }
+            }
+        }
+        /*
+        
+        */
         impl $upper<OpRec> for $ty {
             type Output = OpRec;
             fn $lower(self, rhs: OpRec) -> Self::Output {
@@ -196,6 +269,12 @@ enum Ops {
     Div,
     Const(f64),
     Root
+}
+
+#[derive(Debug, Clone)]
+enum OpRecArg {
+    Rec(OpRec),
+    Const(f64)
 }
 
 #[derive(Debug, Clone)]
@@ -278,19 +357,8 @@ impl From<f64> for OpRec {
     }
 }
 
-fn general_thing(x: OpRec) -> OpRec {
-    x.clone()+x.sin()+OpRec::from(1f64)
-}
-
 fn main() {
-    let mut test = OpRec::new().limit_bound(5u64);;
-    test = (8*test.sin())+3;
-    let mut test2 = OpRec::new();
-    test2 = test2.sin();
-    test += test2;
-    let mut test3 = OpRec::new();
-    test3 = test3.sin().cos().tan().powi(3);
-    test -= test3;
-    test = general_thing(test);
-    println!("{:?}", petgraph::dot::Dot::with_config(&test.graph, &[petgraph::dot::Config::EdgeNoLabel]));
+    let test = OpRecArg::Const(4.into());
+    println!("{:?}", test+6);
+    //println!("{:?}", petgraph::dot::Dot::with_config(&test.graph, &[petgraph::dot::Config::EdgeNoLabel]));
 }
