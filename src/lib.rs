@@ -13,7 +13,8 @@ macro_rules! impl_oprec_op {
             type Output = OpRec;
             fn $lower(self, rhs: OpRec) -> Self::Output {
                 let mut notself = self.clone();
-                impl_oprec_op_inner!($upper, notself, rhs);
+                let operation = notself.graph.add_node(Ops::$upper);
+                merge_oprec_at(rhs, &mut notself, operation);
                 notself
             }
         }
@@ -41,7 +42,8 @@ macro_rules! impl_oprec_op_mut {
     ($lower:ident, $upper:ident, $discriminant:ident) => {
         impl $upper for OpRec {
             fn $lower(&mut self, rhs: OpRec) {
-                impl_oprec_op_inner!($discriminant, self, rhs);
+                let operation = self.graph.add_node(Ops::$discriminant);
+                merge_oprec_at(rhs, self, operation);
             }
         }
         
@@ -83,26 +85,6 @@ macro_rules! impl_oprec_op_mut {
     
 }
 
-macro_rules! impl_oprec_op_inner {
-    ($discriminant:ident, $selfi:ident, $rhs:ident) => {
-        let operation = $selfi.graph.add_node(Ops::$discriminant);
-        let mut node_mappings: HashMap<NodeIndex, NodeIndex> = HashMap::new();
-        $rhs.roots.iter().map(|root| $selfi.roots.push(root.clone())).count();
-        $rhs.graph.node_indices().map(|index| {
-            let clone_node = $rhs.graph[index].clone();
-            let final_index = $selfi.graph.add_node(clone_node.clone());
-            node_mappings.insert(index, final_index);
-            
-        }).count(); // to consume it;
-        $rhs.graph.edge_references().map(|edge| {
-            $selfi.graph.add_edge(node_mappings.get(&edge.source()).unwrap().clone(), node_mappings.get(&edge.target()).unwrap().clone(), 0);
-        }).count(); // to consume it
-        $selfi.graph.add_edge(node_mappings.get(&$rhs.last).unwrap().clone(), operation, 0);
-        $selfi.graph.add_edge($selfi.last, operation, 1);
-        $selfi.last = operation;
-    }
-}
-
 macro_rules! impl_op_mut {
     ($lower:ident, $upper:ident, $ty:ty, $discriminant:ident) => {
         impl $upper<$ty> for OpRec {
@@ -127,7 +109,6 @@ macro_rules! impl_op_mut {
         }
     }
 }
-
 
 macro_rules! impl_oprec_method {
     ($(($lower:ident, $upper:ident $(, $var:ident : $ty:ty)*)),*) => {
@@ -348,21 +329,42 @@ impl_oprec_method!(
     (sqrt, Sqrt), (cbrt, Cbrt)
 );
 
+type OpRecGraph = Graph<Ops, u8>;
+
 impl From<f64> for OpRec {
     fn from(x: f64) -> OpRec {
-        let mut graph = petgraph::graph::Graph::<Ops, u8>::new();
+        let mut graph = OpRecGraph::new();
         let constant = graph.add_node(Ops::Const(x));
         OpRec { graph: graph, roots: vec![], last: constant, limit_bound: 1_000_000u64 }
     }
 }
 
+fn merge_oprec_at(merger: OpRec, mergee: &mut OpRec, at: NodeIndex) {
+    let mut node_mappings: HashMap<NodeIndex, NodeIndex> = HashMap::new();
+    merger.roots.iter().map(|root| mergee.roots.push(root.clone())).count();
+    merger.graph.node_indices().map(|index| {
+        let clone_node = merger.graph[index].clone();
+        let final_index = mergee.graph.add_node(clone_node.clone());
+        node_mappings.insert(index, final_index);
+        
+    }).count(); // to consume it;
+    merger.graph.edge_references().map(|edge| {
+        mergee.graph.add_edge(node_mappings.get(&edge.source()).unwrap().clone(), node_mappings.get(&edge.target()).unwrap().clone(), 0);
+    }).count(); // to consume it
+    mergee.graph.add_edge(node_mappings.get(&merger.last).unwrap().clone(), at, 0);
+    mergee.graph.add_edge(mergee.last, at, 1);
+}
+
+fn get_derivative(graph: &OpRecGraph, from: NodeIndex) -> OpRecGraph {
+    match graph[from] {
+        Ops::Mul => OpRec::new().graph,
+        _ => OpRec::new().graph
+    }
+}
+
 fn main() {
     let mut test = OpRec::new();
-    test += 4;
-    test -= 8;
-    test = test.sin().cos().tan();
-    let g = petgraph::algo::astar(&test.graph, test.roots[0], |finish| finish == test.last, |_| 0, |_| 0);
-    println!("{:?}", g);
+    test *= 4;
+    println!("{:?}", get_derivative(&test.graph, NodeIndex::new(2)));
     println!("{:?}", petgraph::dot::Dot::with_config(&test.graph, &[petgraph::dot::Config::EdgeNoLabel]));
-    println!("{:?}", test.roots);
 }
