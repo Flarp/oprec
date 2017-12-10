@@ -87,13 +87,10 @@ macro_rules! impl_oprec_op_inner {
     ($discriminant:ident, $selfi:ident, $rhs:ident) => {
         let operation = $selfi.graph.add_node(Ops::$discriminant);
         let mut node_mappings: HashMap<NodeIndex, NodeIndex> = HashMap::new();
+        $rhs.roots.iter().map(|root| $selfi.roots.push(root.clone())).count();
         $rhs.graph.node_indices().map(|index| {
             let clone_node = $rhs.graph[index].clone();
             let final_index = $selfi.graph.add_node(clone_node.clone());
-            if clone_node == Ops::Root {
-                let intersection = RootIntersection { root: final_index, intersection: Some(operation) };
-                $selfi.roots.push(intersection);
-            }
             node_mappings.insert(index, final_index);
             
         }).count(); // to consume it;
@@ -101,7 +98,7 @@ macro_rules! impl_oprec_op_inner {
             $selfi.graph.add_edge(node_mappings.get(&edge.source()).unwrap().clone(), node_mappings.get(&edge.target()).unwrap().clone(), 0);
         }).count(); // to consume it
         $selfi.graph.add_edge(node_mappings.get(&$rhs.last).unwrap().clone(), operation, 0);
-        $selfi.graph.add_edge($selfi.last, operation, 0);
+        $selfi.graph.add_edge($selfi.last, operation, 1);
         $selfi.last = operation;
     }
 }
@@ -139,9 +136,10 @@ macro_rules! impl_oprec_method {
             fn $lower(self $(, $var : $ty)*) -> OpRec {
                 let mut notself = self.clone();
                 let operation = notself.graph.add_node(Ops::$upper);
-                notself.graph.add_edge(notself.last, operation, 0);
+                notself.graph.add_edge(notself.last, operation, 1);
                 $(
                 let rh_node = notself.graph.add_node(Ops::Const(f64::from($var)));
+                notself.roots.push(rh_node);
                 notself.graph.add_edge(rh_node, operation, 0);
                 )*
                 notself.last = operation;
@@ -166,7 +164,8 @@ macro_rules! impl_op_inner {
     ($upper:ident, $selfi:ident, $discriminant:ident, $rhs:ident) => {
         let rh_node = $selfi.graph.add_node(Ops::Const(f64::from($rhs)));
         let operation = $selfi.graph.add_node(Ops::$discriminant);
-        $selfi.graph.add_edge($selfi.last, operation, 0);
+        $selfi.roots.push(rh_node);
+        $selfi.graph.add_edge($selfi.last, operation, 1);
         $selfi.graph.add_edge(rh_node, operation, 0);
         $selfi.last = operation;
     }
@@ -203,7 +202,8 @@ macro_rules! impl_op {
                 let rh_node = notself.graph.add_node(Ops::Const(f64::from(self)));
                 let operation = notself.graph.add_node(Ops::$upper);
                 notself.graph.add_edge(notself.last, operation, 0);
-                notself.graph.add_edge(rh_node, operation, 0);
+                notself.graph.add_edge(rh_node, operation, 1);
+                notself.roots.push(rh_node);
                 notself.last = operation;
                 notself
             }
@@ -268,7 +268,7 @@ enum Ops {
     Mul,
     Div,
     Const(f64),
-    Root
+    Var
 }
 
 #[derive(Debug, Clone)]
@@ -285,7 +285,7 @@ struct RootIntersection {
 
 #[derive(Debug, Clone)]
 struct OpRec {
-    roots: Vec<RootIntersection>,
+    roots: Vec<NodeIndex>,
     last: NodeIndex,
     graph: Graph<Ops, u8>,
     limit_bound: u64
@@ -303,9 +303,8 @@ type Polynomial = Vec<PolynomialTerm>;
 impl OpRec {
     fn new() -> OpRec {
         let mut graph = petgraph::graph::Graph::<Ops, u8>::new();
-        let root = graph.add_node(Ops::Root);
-        let intersect = RootIntersection { root: root, intersection: None };
-        OpRec { graph: graph, roots: vec![intersect], last: root, limit_bound: 1_000_000u64 }
+        let root = graph.add_node(Ops::Var);
+        OpRec { graph: graph, roots: vec![root], last: root, limit_bound: 1_000_000u64 }
     }
     
     fn limit_bound(self, x: u64) -> OpRec {
@@ -358,7 +357,12 @@ impl From<f64> for OpRec {
 }
 
 fn main() {
-    let test = OpRecArg::Const(4.into());
-    println!("{:?}", test+6);
-    //println!("{:?}", petgraph::dot::Dot::with_config(&test.graph, &[petgraph::dot::Config::EdgeNoLabel]));
+    let mut test = OpRec::new();
+    test += 4;
+    test -= 8;
+    test = test.sin().cos().tan();
+    let g = petgraph::algo::astar(&test.graph, test.roots[0], |finish| finish == test.last, |_| 0, |_| 0);
+    println!("{:?}", g);
+    println!("{:?}", petgraph::dot::Dot::with_config(&test.graph, &[petgraph::dot::Config::EdgeNoLabel]));
+    println!("{:?}", test.roots);
 }
