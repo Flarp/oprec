@@ -120,7 +120,8 @@ macro_rules! impl_oprec_method {
                 notself.graph.add_edge(notself.last, operation, 1);
                 $(
                 let rh_node = notself.graph.add_node(Ops::Const(f64::from($var)));
-                notself.roots.push(rh_node);
+                let root = RootIntersection { root: rh_node, intersection: Some(operation) };
+                notself.roots.push(root);
                 notself.graph.add_edge(rh_node, operation, 0);
                 )*
                 notself.last = operation;
@@ -145,7 +146,8 @@ macro_rules! impl_op_inner {
     ($upper:ident, $selfi:ident, $discriminant:ident, $rhs:ident) => {
         let rh_node = $selfi.graph.add_node(Ops::Const(f64::from($rhs)));
         let operation = $selfi.graph.add_node(Ops::$discriminant);
-        $selfi.roots.push(rh_node);
+        let root = RootIntersection { root: rh_node, intersection: Some(operation) };
+        $selfi.roots.push(root);
         $selfi.graph.add_edge($selfi.last, operation, 1);
         $selfi.graph.add_edge(rh_node, operation, 0);
         $selfi.last = operation;
@@ -184,7 +186,8 @@ macro_rules! impl_op {
                 let operation = notself.graph.add_node(Ops::$upper);
                 notself.graph.add_edge(notself.last, operation, 0);
                 notself.graph.add_edge(rh_node, operation, 1);
-                notself.roots.push(rh_node);
+                let root = RootIntersection { root: rh_node, intersection: Some(operation) };
+                notself.roots.push(root);
                 notself.last = operation;
                 notself
             }
@@ -266,7 +269,7 @@ struct RootIntersection {
 
 #[derive(Debug, Clone)]
 struct OpRec {
-    roots: Vec<NodeIndex>,
+    roots: Vec<RootIntersection>,
     last: NodeIndex,
     graph: Graph<Ops, u8>,
     limit_bound: u64
@@ -285,7 +288,7 @@ impl OpRec {
     fn new() -> OpRec {
         let mut graph = petgraph::graph::Graph::<Ops, u8>::new();
         let root = graph.add_node(Ops::Var);
-        OpRec { graph: graph, roots: vec![root], last: root, limit_bound: 1_000_000u64 }
+        OpRec { graph: graph, roots: vec![RootIntersection { root: root, intersection: None }], last: root, limit_bound: 1_000_000u64 }
     }
     
     fn limit_bound(self, x: u64) -> OpRec {
@@ -365,6 +368,6 @@ fn get_derivative(graph: &OpRecGraph, from: NodeIndex) -> OpRecGraph {
 fn main() {
     let mut test = OpRec::new();
     test *= 4;
-    println!("{:?}", get_derivative(&test.graph, NodeIndex::new(2)));
-    println!("{:?}", petgraph::dot::Dot::with_config(&test.graph, &[petgraph::dot::Config::EdgeNoLabel]));
+    println!("{:?}", &test);
+    //println!("{:?}", petgraph::dot::Dot::with_config(&test.graph, &[petgraph::dot::Config::EdgeNoLabel]));
 }
