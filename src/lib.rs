@@ -4,8 +4,7 @@
 extern crate petgraph;
 use std::ops::*;
 use std::collections::HashMap;
-use petgraph::graph::*;
-use petgraph::visit::EdgeRef;
+use petgraph::prelude::*;
 
 macro_rules! impl_oprec_op {
     ($lower:ident, $upper:ident) => {
@@ -342,6 +341,21 @@ impl From<f64> for OpRec {
     }
 }
 
+/*
+fn get_edges_from(graph: &OpRecGraph, index: NodeIndex) -> Vec<EdgeReference<u8>> {
+    let mut vec = Vec::new();
+    
+}
+
+fn branch_from_index(graph: &OpRecGraph, mut new_graph: &mut OpRecGraph, index: NodeIndex) -> NodeIndex {
+    let node = new_graph.add_node(graph[index].clone());
+    for edge in graph.edges_directed(index, petgraph::Incoming) {
+        let mut save_graph = new_graph.clone();
+        save_graph.add_edge(branch_from_index(graph, &mut new_graph, edge.source()), node, *edge.weight());
+    }
+    node
+}
+*/
 fn merge_oprec_at(merger: OpRec, mergee: &mut OpRec, at: NodeIndex) {
     let mut node_mappings: HashMap<NodeIndex, NodeIndex> = HashMap::new();
     merger.roots.iter().map(|root| mergee.roots.push(root.clone())).count();
@@ -368,6 +382,9 @@ fn get_derivative(graph: &OpRecGraph, from: NodeIndex) -> OpRecGraph {
 fn main() {
     let mut test = OpRec::new();
     test *= 4;
-    println!("{:?}", &test);
-    //println!("{:?}", petgraph::dot::Dot::with_config(&test.graph, &[petgraph::dot::Config::EdgeNoLabel]));
+    test = test.sin().cos().tan();
+    let mut x = OpRecGraph::new();
+    //branch_from_index(&test.graph, &mut x, NodeIndex::new(3));
+    //println!("{:?}", &test);
+    println!("{:?}", petgraph::dot::Dot::with_config(&test.graph, &[petgraph::dot::Config::EdgeNoLabel]));
 }
