@@ -341,21 +341,30 @@ impl From<f64> for OpRec {
     }
 }
 
-/*
-fn get_edges_from(graph: &OpRecGraph, index: NodeIndex) -> Vec<EdgeReference<u8>> {
-    let mut vec = Vec::new();
-    
+fn graph_from_branch(graph: &OpRecGraph, start: NodeIndex) -> OpRecGraph {
+    let mut next_nodes = Vec::new();
+    let mut node_mapping = HashMap::new();
+    let mut new_graph = OpRecGraph::new();
+    next_nodes.push(start);
+    node_mapping.insert(start, new_graph.add_node(graph[start].clone()));
+    while next_nodes.len() > 0 {
+        let mut next_nodes_temp = Vec::new();
+        for node in next_nodes {
+            for edge in graph.edges_directed(node, petgraph::Incoming) {
+                let old_source = edge.source();
+                let new_source = new_graph.add_node(graph[old_source].clone());
+                let new_target = node_mapping[&node];
+                node_mapping.insert(old_source, new_source);
+                new_graph.add_edge(new_source, new_target, edge.weight().clone());
+                next_nodes_temp.push(old_source);
+            }
+        }
+        next_nodes = next_nodes_temp;
+    }
+    new_graph
 }
 
-fn branch_from_index(graph: &OpRecGraph, mut new_graph: &mut OpRecGraph, index: NodeIndex) -> NodeIndex {
-    let node = new_graph.add_node(graph[index].clone());
-    for edge in graph.edges_directed(index, petgraph::Incoming) {
-        let mut save_graph = new_graph.clone();
-        save_graph.add_edge(branch_from_index(graph, &mut new_graph, edge.source()), node, *edge.weight());
-    }
-    node
-}
-*/
+
 fn merge_oprec_at(merger: OpRec, mergee: &mut OpRec, at: NodeIndex) {
     let mut node_mappings: HashMap<NodeIndex, NodeIndex> = HashMap::new();
     merger.roots.iter().map(|root| mergee.roots.push(root.clone())).count();
@@ -366,9 +375,9 @@ fn merge_oprec_at(merger: OpRec, mergee: &mut OpRec, at: NodeIndex) {
         
     }).count(); // to consume it;
     merger.graph.edge_references().map(|edge| {
-        mergee.graph.add_edge(node_mappings.get(&edge.source()).unwrap().clone(), node_mappings.get(&edge.target()).unwrap().clone(), 0);
+        mergee.graph.add_edge(node_mappings[&edge.source()].clone(), node_mappings[&edge.target()].clone(), 0);
     }).count(); // to consume it
-    mergee.graph.add_edge(node_mappings.get(&merger.last).unwrap().clone(), at, 0);
+    mergee.graph.add_edge(node_mappings[&merger.last].clone(), at, 0);
     mergee.graph.add_edge(mergee.last, at, 1);
 }
 
@@ -383,8 +392,9 @@ fn main() {
     let mut test = OpRec::new();
     test *= 4;
     test = test.sin().cos().tan();
-    let mut x = OpRecGraph::new();
     //branch_from_index(&test.graph, &mut x, NodeIndex::new(3));
     //println!("{:?}", &test);
     println!("{:?}", petgraph::dot::Dot::with_config(&test.graph, &[petgraph::dot::Config::EdgeNoLabel]));
+    let g = graph_from_branch(&test.graph, NodeIndex::new(3));
+    println!("{:?}", petgraph::dot::Dot::with_config(&g, &[petgraph::dot::Config::EdgeNoLabel]));
 }
