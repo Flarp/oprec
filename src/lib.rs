@@ -73,13 +73,6 @@ macro_rules! impl_oprec_op_mut {
                 };
             }
         }
-        /*
-        impl $upper for OpRecArg {
-            fn $lower(&mut self, rhs: OpRecArg) {
-                impl_oparg_op_inner!($lower, self, rhs);
-            }
-        }
-        */
     }
     
 }
@@ -164,7 +157,6 @@ macro_rules! impl_op {
             }
         }
         
-        
         impl $upper<$ty> for OpRecArg {
             type Output = OpRecArg;
             fn $lower(self, rhs: $ty) -> Self::Output {
@@ -174,9 +166,7 @@ macro_rules! impl_op {
                 }
             }
         }
-        /*
         
-        */
         impl $upper<OpRec> for $ty {
             type Output = OpRec;
             fn $lower(self, rhs: OpRec) -> Self::Output {
@@ -364,19 +354,17 @@ fn graph_from_branch(graph: &OpRecGraph, start: NodeIndex) -> OpRecGraph {
     new_graph
 }
 
-
 fn merge_oprec_at(merger: OpRec, mergee: &mut OpRec, at: NodeIndex) {
     let mut node_mappings: HashMap<NodeIndex, NodeIndex> = HashMap::new();
     merger.roots.iter().map(|root| mergee.roots.push(root.clone())).count();
-    merger.graph.node_indices().map(|index| {
+    for index in merger.graph.node_indices() {
         let clone_node = merger.graph[index].clone();
         let final_index = mergee.graph.add_node(clone_node.clone());
         node_mappings.insert(index, final_index);
-        
-    }).count(); // to consume it;
-    merger.graph.edge_references().map(|edge| {
+    }
+    for edge in merger.graph.edge_references() {
         mergee.graph.add_edge(node_mappings[&edge.source()].clone(), node_mappings[&edge.target()].clone(), 0);
-    }).count(); // to consume it
+    }
     mergee.graph.add_edge(node_mappings[&merger.last].clone(), at, 0);
     mergee.graph.add_edge(mergee.last, at, 1);
 }
