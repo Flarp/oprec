@@ -118,8 +118,8 @@ macro_rules! impl_oprec_method {
                 notself.graph.add_edge(notself.last, operation, 1);
                 $(
                 let rh_node = notself.graph.add_node(Ops::Const(f64::from($var)));
-                //let root = RootIntersection { root: rh_node, intersection: Some(operation) };
-                //notself.roots.push(root);
+                let root = RootIntersection { root: rh_node, intersection: Some(operation) };
+                notself.roots.push(root);
                 notself.graph.add_edge(rh_node, operation, 0);
                 )*
                 notself.last = operation;
@@ -144,8 +144,8 @@ macro_rules! impl_op_inner {
     ($upper:ident, $selfi:ident, $discriminant:ident, $rhs:ident) => {
         let rh_node = $selfi.graph.add_node(Ops::Const(f64::from($rhs)));
         let operation = $selfi.graph.add_node(Ops::$discriminant);
-        //let root = RootIntersection { root: rh_node, intersection: Some(operation) };
-        //$selfi.roots.push(root);
+        let root = RootIntersection { root: rh_node, intersection: Some(operation) };
+        $selfi.roots.push(root);
         $selfi.graph.add_edge($selfi.last, operation, 1);
         $selfi.graph.add_edge(rh_node, operation, 0);
         $selfi.last = operation;
@@ -181,8 +181,8 @@ macro_rules! impl_op {
                 let operation = notself.graph.add_node(Ops::$upper);
                 notself.graph.add_edge(notself.last, operation, 0);
                 notself.graph.add_edge(rh_node, operation, 1);
-                //let root = RootIntersection { root: rh_node, intersection: Some(operation) };
-                //notself.roots.push(root);
+                let root = RootIntersection { root: rh_node, intersection: Some(operation) };
+                notself.roots.push(root);
                 notself.last = operation;
                 notself
             }
@@ -256,15 +256,15 @@ enum OpRecArg {
     Const(f64)
 }
 
-//#[derive(Debug, Clone)]
-//struct RootIntersection {
-//    root: NodeIndex,
-//    intersection: Option<NodeIndex>
-//}
+#[derive(Debug, Clone)]
+struct RootIntersection {
+    root: NodeIndex,
+    intersection: Option<NodeIndex>
+}
 
 #[derive(Debug, Clone)]
 struct OpRec {
-    //roots: Vec<RootIntersection>,
+    roots: Vec<RootIntersection>,
     last: NodeIndex,
     graph: Graph<Ops, u8>,
     limit_bound: u64
@@ -299,7 +299,7 @@ impl OpRec {
     fn new() -> OpRec {
         let mut graph = petgraph::graph::Graph::<Ops, u8>::new();
         let root = graph.add_node(Ops::Var);
-        OpRec { graph: graph, /*roots: vec![RootIntersection { root: root, intersection: None }],*/ last: root, limit_bound: 1_000_000u64 }
+        OpRec { graph: graph, roots: vec![RootIntersection { root: root, intersection: None }], last: root, limit_bound: 1_000_000u64 }
     }
     
     fn limit_bound(self, x: u64) -> OpRec {
@@ -356,11 +356,13 @@ impl From<f64> for OpRec {
     fn from(x: f64) -> OpRec {
         let mut graph = OpRecGraph::new();
         let constant = graph.add_node(Ops::Const(x));
-        OpRec { graph: graph, /*roots: vec![], */ last: constant, limit_bound: 1_000_000u64 }
+        OpRec { graph: graph, roots: vec![], last: constant, limit_bound: 1_000_000u64 }
     }
 }
 
-fn graph_from_branch(graph: &OpRecGraph, start: NodeIndex) -> OpRecGraph {
+/*
+fn graph_from_branch(rec: &OpRec, start: NodeIndex) -> OpRec {
+    let graph = &rec.graph;
     let mut next_nodes = Vec::new();
     let mut node_mapping = HashMap::new();
     let mut new_graph = OpRecGraph::new();
@@ -380,12 +382,13 @@ fn graph_from_branch(graph: &OpRecGraph, start: NodeIndex) -> OpRecGraph {
         }
         next_nodes = next_nodes_temp;
     }
-    new_graph
+    OpRec { graph: new_graph, last: node_mapping[&start], limit_bound: rec.limit_bound }
 }
+*/
 
 fn merge_oprec_at(merger: OpRec, mergee: &mut OpRec, at: NodeIndex) {
     let mut node_mappings: HashMap<NodeIndex, NodeIndex> = HashMap::new();
-    //merger.roots.iter().map(|root| mergee.roots.push(root.clone())).count();
+    merger.roots.iter().map(|root| mergee.roots.push(root.clone())).count();
     for index in merger.graph.node_indices() {
         let clone_node = merger.graph[index].clone();
         let final_index = mergee.graph.add_node(clone_node.clone());
@@ -398,11 +401,11 @@ fn merge_oprec_at(merger: OpRec, mergee: &mut OpRec, at: NodeIndex) {
     mergee.graph.add_edge(mergee.last, at, 1);
 }
 
-fn get_derivative(graph: &OpRecGraph, from: NodeIndex) -> OpRecGraph {
-    match graph[from] {
-        Ops::Mul => OpRec::new().graph,
-        _ => OpRec::new().graph
-    }
+fn get_derivative(rec: &OpRec) -> OpRec {
+    // left, right, intersection
+    //let mut temp = Vec::new();
+    let intersections: Vec<(NodeIndex, NodeIndex, NodeIndex)> = Vec::new();
+    unimplemented!();
 }
 
 fn main() {
@@ -412,6 +415,6 @@ fn main() {
     //branch_from_index(&test.graph, &mut x, NodeIndex::new(3));
     //println!("{:?}", &test);
     println!("{:?}", petgraph::dot::Dot::with_config(&test.graph, &[petgraph::dot::Config::EdgeNoLabel]));
-    let g = graph_from_branch(&test.graph, NodeIndex::new(3));
-    println!("{:?}", petgraph::dot::Dot::with_config(&g, &[petgraph::dot::Config::EdgeNoLabel]));
+    //let g = graph_from_branch(&test, NodeIndex::new(3));
+    //println!("{:?}", petgraph::dot::Dot::with_config(&g.graph, &[petgraph::dot::Config::EdgeNoLabel]));
 }
