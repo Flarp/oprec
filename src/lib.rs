@@ -3,7 +3,7 @@
 
 extern crate petgraph;
 use std::ops::*;
-use std::collections::HashMap;
+use std::collections::{ HashMap, HashSet };
 use petgraph::prelude::*;
 
 macro_rules! extend_with_edges {
@@ -145,6 +145,9 @@ macro_rules! impl_op_inner {
         let rh_node = $selfi.graph.add_node(Ops::Const(f64::from($rhs)));
         let operation = $selfi.graph.add_node(Ops::$discriminant);
         let root = RootIntersection { root: rh_node, intersection: Some(operation) };
+        if $selfi.roots[0].intersection.is_none() {
+            $selfi.roots[0].intersection = Some(operation);
+        }
         $selfi.roots.push(root);
         $selfi.graph.add_edge($selfi.last, operation, 1);
         $selfi.graph.add_edge(rh_node, operation, 0);
@@ -360,7 +363,6 @@ impl From<f64> for OpRec {
     }
 }
 
-/*
 fn graph_from_branch(rec: &OpRec, start: NodeIndex) -> OpRec {
     let graph = &rec.graph;
     let mut next_nodes = Vec::new();
@@ -382,9 +384,19 @@ fn graph_from_branch(rec: &OpRec, start: NodeIndex) -> OpRec {
         }
         next_nodes = next_nodes_temp;
     }
-    OpRec { graph: new_graph, last: node_mapping[&start], limit_bound: rec.limit_bound }
+    let mut roots = Vec::new();
+    for root in &rec.roots {
+        if node_mapping.get(&root.root).is_some() {
+            if root.intersection.is_some() {
+                roots.push(RootIntersection { root: node_mapping[&root.root], intersection: node_mapping.get(&root.intersection.unwrap()).cloned() });
+            } else {
+                roots.push(RootIntersection { root: node_mapping[&root.root], intersection: None })
+            }
+        }
+    }
+    OpRec { graph: new_graph, last: node_mapping[&start], limit_bound: rec.limit_bound, roots: roots }
 }
-*/
+
 
 fn merge_oprec_at(merger: OpRec, mergee: &mut OpRec, at: NodeIndex) {
     let mut node_mappings: HashMap<NodeIndex, NodeIndex> = HashMap::new();
@@ -401,20 +413,43 @@ fn merge_oprec_at(merger: OpRec, mergee: &mut OpRec, at: NodeIndex) {
     mergee.graph.add_edge(mergee.last, at, 1);
 }
 
-fn get_derivative(rec: &OpRec) -> OpRec {
+#[inline(always)]
+fn is_intersection(node: &Ops) -> bool {
+    match node {
+        &Ops::Add => true,
+        &Ops::Mul => true,
+        &Ops::Div => true,
+        &Ops::Sub => true,
+        &Ops::PowF => true,
+        &Ops::PowI => true,
+        &Ops::Log => true,
+        &Ops::Atan2 => true,
+        _ => false
+    }
+}
+
+fn get_derivative(rec: &OpRec, last: NodeIndex) -> OpRec {
     // left, right, intersection
-    //let mut temp = Vec::new();
-    let intersections: Vec<(NodeIndex, NodeIndex, NodeIndex)> = Vec::new();
-    unimplemented!();
+    //let mut new_graph = OpRecGraph::new();
+    //let mut intersections: HashSet<NodeIndex> = HashSet::new();
+    //let mut finished_intersections = Vec::new();
+    //for root in &rec.roots {
+    //    println!("{:?}", root);
+    //    intersections.insert(root.intersection.unwrap());
+    //}
+    //unimplemented!();
+    match rec.graph[last] {
+        Ops::Sin => {
+            let prev: NodeIndex = rec.graph.neighbors_directed(last, petgraph::Incoming).next().unwrap();
+            graph_from_branch(&rec, prev).cos() * get_derivative(rec, prev)
+        },
+        _ => OpRec::new().cos()
+    }
 }
 
 fn main() {
     let mut test = OpRec::new();
     test *= 4;
     test = test.sin().cos().tan().mul_add(3, 5);
-    //branch_from_index(&test.graph, &mut x, NodeIndex::new(3));
-    //println!("{:?}", &test);
     println!("{:?}", petgraph::dot::Dot::with_config(&test.graph, &[petgraph::dot::Config::EdgeNoLabel]));
-    //let g = graph_from_branch(&test, NodeIndex::new(3));
-    //println!("{:?}", petgraph::dot::Dot::with_config(&g.graph, &[petgraph::dot::Config::EdgeNoLabel]));
 }
