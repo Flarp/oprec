@@ -223,28 +223,28 @@ impl_type!(f64, f32, i8, i16, i32, u8, u16, u32);
 
 #[derive(Debug, Clone, PartialEq)]
 enum Ops {
-    Sin, //done
-    Cos, //done
-    Tan, //done
-    Asin, //done
-    Acos, //done
-    Atan, //done
-    Sinh, //done
-    Cosh, //done
-    Tanh, //done
-    Asinh, //done
-    Acosh, //done
-    Atanh, //done
-    Pow, //done
-    Exp, //done
-    Ln,  //done
-    Add, //done
-    Sub, //done
-    Mul, //done
-    Div, //done
-    Const(f64), //done
-    Var, //done
-    Abs, //done
+    Sin,
+    Cos,
+    Tan,
+    Asin,
+    Acos,
+    Atan,
+    Sinh,
+    Cosh,
+    Tanh,
+    Asinh,
+    Acosh,
+    Atanh,
+    Pow,
+    Exp,
+    Ln,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Const(f64),
+    Var,
+    Abs,
 }
 
 #[derive(Debug, Clone)]
@@ -288,6 +288,20 @@ impl OpRecArg {
         match self {
             OpRecArg::Const(z) => (OpRecArg::Const(z.sin()), OpRecArg::Const(z.cos())),
             OpRecArg::Rec(z) => (OpRecArg::Rec(z.clone().sin()), OpRecArg::Rec(z.cos())),
+        }
+    }
+    
+    fn hypot<T>(self, rhs: T) -> OpRecArg where f64: std::convert::From<T> {
+        match self {
+            OpRecArg::Const(z) => OpRecArg::Const((z.powi(2) + f64::from(rhs).powi(2)).sqrt()),
+            OpRecArg::Rec(z) => OpRecArg::Rec((z.powi(2) + OpRec::from(f64::from(rhs)).powi(2f64)).sqrt())
+        }
+    }
+    
+    fn exp2(self) -> OpRecArg {
+        match self {
+            OpRecArg::Const(z) => OpRecArg::Const(2f64.powf(z)),
+            OpRecArg::Rec(z) => OpRecArg::Rec(OpRec::from(2).powf(z))
         }
     }
 }
