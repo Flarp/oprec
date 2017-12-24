@@ -1,5 +1,4 @@
 //#![feature(trace_macros, conservative_impl_trait)]
-//trace_macros!(true);
 
 extern crate petgraph;
 use std::ops::*;
@@ -108,6 +107,8 @@ macro_rules! impl_oprec_method {
     ($(($lower:ident, $upper:ident $(, $var:ident : $ty:ty)*)),*) => {
         impl OpRec {
             $(
+            // revolting hack to make already generic functions even
+            // more generic
             fn $lower$(<$var: Into<OpRec>>)*(self $(, $var : $var)*) -> OpRec {
                 let mut notself = self.clone();
                 let operation = notself.graph.add_node(Ops::$upper);
@@ -222,37 +223,28 @@ impl_type!(f64, f32, i8, i16, i32, u8, u16, u32);
 
 #[derive(Debug, Clone, PartialEq)]
 enum Ops {
-    Sin,
-    Cos,
-    Tan,
-    Asin,
-    Acos,
-    Atan,
-    Sinh,
-    Cosh,
-    Tanh,
-    Asinh,
-    Acosh,
-    Atanh,
-    Atan2,
-    Recip,
-    Pow,
-    Exp,
-    Exp2,
-    Ln,
-    Log,
-    Log2,
-    Log10,
-    Sqrt,
-    Cbrt,
-    Hypot,
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Const(f64),
-    Var,
-    Abs,
+    Sin, //done
+    Cos, //done
+    Tan, //done
+    Asin, //done
+    Acos, //done
+    Atan, //done
+    Sinh, //done
+    Cosh, //done
+    Tanh, //done
+    Asinh, //done
+    Acosh, //done
+    Atanh, //done
+    Pow, //done
+    Exp, //done
+    Ln,  //done
+    Add, //done
+    Sub, //done
+    Mul, //done
+    Div, //done
+    Const(f64), //done
+    Var, //done
+    Abs, //done
 }
 
 #[derive(Debug, Clone)]
@@ -300,6 +292,35 @@ impl OpRecArg {
     }
 }
 
+macro_rules! quick_impl_arg {
+    ($inside:ident, $($i:ident -> $e:expr),*) => {
+        impl OpRecArg {
+            $(fn $i(self) -> OpRecArg {
+                match self {
+                    OpRecArg::Const($inside) => OpRecArg::Const($e),
+                    OpRecArg::Rec($inside) => OpRecArg::Rec($e)
+                }
+            })*
+        }
+        impl OpRec {
+            $(fn $i(self) -> OpRec {
+                let $inside = self;
+                $e
+            })*
+        }
+    }
+}
+
+quick_impl_arg!(
+    x,
+    exp_m1 -> x.exp() - 1f64,
+    ln_1p -> (x+1f64).ln(),
+    log2 -> x.ln()/2f64.ln(),
+    log10 -> x.ln()/10f64.ln(),
+    cbrt -> x.powf((1/3) as f64),
+    sqrt -> x.powf((1/2) as f64)
+);
+
 impl OpRec {
     fn new() -> OpRec {
         let mut graph = petgraph::graph::Graph::<Ops, u8>::new();
@@ -325,13 +346,17 @@ impl OpRec {
     fn sin_cos(self) -> (OpRec, OpRec) {
         (self.clone().sin(), self.cos())
     }
-    
-    fn exp_m1(self) -> OpRec {
-        self.exp() - 1
+
+    fn log<T: Into<OpRec>>(self, base: T) -> OpRec {
+        self.ln()/base.into().ln()
     }
     
-    fn ln_1p(self) -> OpRec {
-        (self + 1f64).ln()
+    fn hypot<T: Into<OpRec>>(self, rhs: T) -> OpRec {
+        (self.powi(2) + rhs.into().powi(2)).sqrt()
+    }
+    
+    fn exp2(self) -> OpRec {
+        OpRec::from(2).powf(self)
     }
     
     fn functify<T: Into<f64>>(self, a: T) -> Box<Fn(f64) -> f64> {
@@ -347,14 +372,11 @@ impl OpRec {
 
 impl_oprec_method!(
     (sin, Sin), (cos, Cos), (tan, Tan), 
-    (asin, Asin), (acos, Acos), (atan, Atan), (atan2, Atan2, float: f64),
+    (asin, Asin), (acos, Acos), (atan, Atan),
     (sinh, Sinh), (cosh, Cosh), (tanh, Tanh),
     (asinh, Asinh), (acosh, Acosh), (atanh, Atanh),
     (powf, Pow, float: f64), (powi, Pow, int: i32),
-    (exp, Exp), (exp2, Exp2),
-    (ln, Ln), (log, Log, base: f64), (log10, Log10), (log2, Log2),
-    (recip, Recip), (abs, Abs),
-    (sqrt, Sqrt), (cbrt, Cbrt)
+    (exp, Exp), (ln, Ln), (abs, Abs)
 );
 
 type OpRecGraph = Graph<Ops, u8>;
@@ -455,7 +477,7 @@ fn get_derivative(rec: &OpRec, last: NodeIndex) -> OpRec {
         },
         Ops::Tan => {
             let prev: NodeIndex = rec.graph.neighbors_directed(last, petgraph::Incoming).next().unwrap();
-            (graph_from_branch(&rec, prev).cos().recip().powi(2)) * get_derivative(rec, prev)
+            ((1f64/graph_from_branch(&rec, prev).cos()).powi(2)) * get_derivative(rec, prev)
         },
         Ops::Add => {
             let mut neighbors = rec.graph.neighbors_directed(last, petgraph::Incoming);
@@ -483,16 +505,49 @@ fn get_derivative(rec: &OpRec, last: NodeIndex) -> OpRec {
         Ops::Abs => {
             let prev: NodeIndex = rec.graph.neighbors_directed(last, petgraph::Incoming).next().unwrap();
             (graph_from_branch(&rec, prev)*get_derivative(&rec, prev))/(graph_from_branch(rec, last))
+        },
+        Ops::Asin => {
+            let prev: NodeIndex = rec.graph.neighbors_directed(last, petgraph::Incoming).next().unwrap();
+            get_derivative(&rec, prev)/(1f64-graph_from_branch(&rec, last).powi(2)).sqrt()
+        },
+        Ops::Acos => {
+            let prev: NodeIndex = rec.graph.neighbors_directed(last, petgraph::Incoming).next().unwrap();
+            (get_derivative(&rec, prev)/(1f64-graph_from_branch(&rec, last).powi(2)).sqrt()) * -1
+        },
+        Ops::Atan => {
+            let prev: NodeIndex = rec.graph.neighbors_directed(last, petgraph::Incoming).next().unwrap();
+            get_derivative(&rec, prev)/(1+graph_from_branch(rec, last).powi(2))
+        },
+        Ops::Sinh => {
+            let prev: NodeIndex = rec.graph.neighbors_directed(last, petgraph::Incoming).next().unwrap();
+            get_derivative(&rec, prev)*graph_from_branch(rec, prev).cosh()
+        },
+        Ops::Cosh => {
+            let prev: NodeIndex = rec.graph.neighbors_directed(last, petgraph::Incoming).next().unwrap();
+            get_derivative(&rec, prev)*graph_from_branch(rec, prev).sinh()
+        },
+        Ops::Tanh => {
+            let prev: NodeIndex = rec.graph.neighbors_directed(last, petgraph::Incoming).next().unwrap();
+            get_derivative(&rec, prev)/graph_from_branch(rec, prev).cosh().powi(2)
+        },
+        Ops::Asinh => {
+            let prev: NodeIndex = rec.graph.neighbors_directed(last, petgraph::Incoming).next().unwrap();
+            get_derivative(&rec, prev)/(graph_from_branch(&rec, prev).powi(2) + 1f64).sqrt()
+        },
+        Ops::Acosh => {
+            let prev: NodeIndex = rec.graph.neighbors_directed(last, petgraph::Incoming).next().unwrap();
+            get_derivative(&rec, prev)/(graph_from_branch(&rec, prev).powi(2) - 1f64).sqrt()
+        },
+        Ops::Atanh => {
+            let prev: NodeIndex = rec.graph.neighbors_directed(last, petgraph::Incoming).next().unwrap();
+            get_derivative(&rec, prev)/(1f64-graph_from_branch(&rec, prev).powi(2))
         }
-        _ => OpRec::new().cos()
     }
 }
 
 fn main() {
-    let test = OpRec::from(2);
-    let test3 = OpRec::new();
-    let mut test2 = test.powf(test3 * 2);
-    test2 = test2.differentiate();
-    println!("{:?}", petgraph::dot::Dot::with_config(&test2.graph, &[petgraph::dot::Config::EdgeNoLabel]));
+    let mut test = OpRec::new();
+    test = test.log(4);
+    println!("{:?}", petgraph::dot::Dot::with_config(&test.graph, &[petgraph::dot::Config::EdgeNoLabel]));
     //println!("{:?}", petgraph::dot::Dot::with_config(&get_derivative(&test, test.last).graph, &[petgraph::dot::Config::EdgeNoLabel]));
 }
