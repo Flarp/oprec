@@ -6,12 +6,6 @@ use std::ops::*;
 use std::collections::HashMap;
 use petgraph::prelude::*;
 
-macro_rules! extend_with_edges {
-    ($graph:expr, $(($first:expr, $second:expr, $weight:expr)),*) => {
-        $($graph.add_edge($first, $second, $weight);)*
-    }
-}
-
 macro_rules! impl_oprec_op {
     ($lower:ident, $upper:ident) => {
         impl $upper for OpRec {
