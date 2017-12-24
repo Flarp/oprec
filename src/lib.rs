@@ -251,7 +251,8 @@ enum Ops {
     Mul,
     Div,
     Const(f64),
-    Var
+    Var,
+    Abs,
 }
 
 #[derive(Debug, Clone)]
@@ -352,7 +353,7 @@ impl_oprec_method!(
     (powf, Pow, float: f64), (powi, Pow, int: i32),
     (exp, Exp), (exp2, Exp2),
     (ln, Ln), (log, Log, base: f64), (log10, Log10), (log2, Log2),
-    (recip, Recip),
+    (recip, Recip), (abs, Abs),
     (sqrt, Sqrt), (cbrt, Cbrt)
 );
 
@@ -478,6 +479,10 @@ fn get_derivative(rec: &OpRec, last: NodeIndex) -> OpRec {
         Ops::Exp => {
             let prev: NodeIndex = rec.graph.neighbors_directed(last, petgraph::Incoming).next().unwrap();
             graph_from_branch(&rec, last) * get_derivative(rec, prev)
+        },
+        Ops::Abs => {
+            let prev: NodeIndex = rec.graph.neighbors_directed(last, petgraph::Incoming).next().unwrap();
+            (graph_from_branch(&rec, prev)*get_derivative(&rec, prev))/(graph_from_branch(rec, last))
         }
         _ => OpRec::new().cos()
     }
