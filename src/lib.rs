@@ -3,7 +3,7 @@
 
 extern crate petgraph;
 use std::ops::*;
-use std::collections::{ HashMap, HashSet };
+use std::collections::HashMap;
 use petgraph::prelude::*;
 
 macro_rules! extend_with_edges {
@@ -20,6 +20,7 @@ macro_rules! impl_oprec_op {
                 let mut notself = self.clone();
                 let operation = notself.graph.add_node(Ops::$upper);
                 merge_oprec_at(rhs, &mut notself, operation);
+                notself.last = operation;
                 notself
             }
         }
@@ -49,6 +50,7 @@ macro_rules! impl_oprec_op_mut {
             fn $lower(&mut self, rhs: OpRec) {
                 let operation = self.graph.add_node(Ops::$discriminant);
                 merge_oprec_at(rhs, self, operation);
+                self.last = operation;
             }
         }
         
@@ -180,11 +182,11 @@ macro_rules! impl_op {
             type Output = OpRec;
             fn $lower(self, rhs: OpRec) -> Self::Output {
                 let mut notself = rhs.clone();
-                let rh_node = notself.graph.add_node(Ops::Const(f64::from(self)));
+                let lh_node = notself.graph.add_node(Ops::Const(f64::from(self)));
                 let operation = notself.graph.add_node(Ops::$upper);
                 notself.graph.add_edge(notself.last, operation, 0);
-                notself.graph.add_edge(rh_node, operation, 1);
-                let root = RootIntersection { root: rh_node, intersection: Some(operation) };
+                notself.graph.add_edge(lh_node, operation, 1);
+                let root = RootIntersection { root: lh_node, intersection: Some(operation) };
                 notself.roots.push(root);
                 notself.last = operation;
                 notself
@@ -234,8 +236,7 @@ enum Ops {
     Atanh,
     Atan2,
     Recip,
-    PowI,
-    PowF,
+    Pow,
     Exp,
     Exp2,
     Ln,
@@ -314,17 +315,7 @@ impl OpRec {
     // it is two operations in one function
     
     fn mul_add<T: Into<f64>>(self, mul: T, add: T) -> OpRec {
-        let mut notself = self.clone();
-        let mul_op = notself.graph.add_node(Ops::Mul);
-        let mul_const = notself.graph.add_node(Ops::Const(mul.into()));
-        let add_op = notself.graph.add_node(Ops::Add);
-        let add_const = notself.graph.add_node(Ops::Const(add.into()));
-        extend_with_edges!(notself.graph, 
-        (notself.last, mul_op, 0), (mul_const, mul_op, 0),
-        (mul_op, add_op, 0), (add_const, add_op, 0)
-        );
-        notself.last = add_op;
-        notself
+        (self*mul.into())+add.into()
     }
     
     // sin_cos must be implemented separately because it returns
@@ -334,9 +325,21 @@ impl OpRec {
         (self.clone().sin(), self.cos())
     }
     
+    fn exp_m1(self) -> OpRec {
+        self.exp() - 1
+    }
+    
+    fn ln_1p(self) -> OpRec {
+        (self + 1f64).ln()
+    }
+    
     fn functify<T: Into<f64>>(self, a: T) -> impl Fn(f64) -> f64 {
         let z = a.into();
         move |x| x + z
+    }
+    
+    fn differentiate(self) -> OpRec {
+        get_derivative(&self, self.last)
     }
     
 }
@@ -346,7 +349,7 @@ impl_oprec_method!(
     (asin, Asin), (acos, Acos), (atan, Atan), (atan2, Atan2, float: f64),
     (sinh, Sinh), (cosh, Cosh), (tanh, Tanh),
     (asinh, Asinh), (acosh, Acosh), (atanh, Atanh),
-    (powf, PowF, float: f64), (powi, PowI, int: i32),
+    (powf, Pow, float: f64), (powi, Pow, int: i32),
     (exp, Exp), (exp2, Exp2),
     (ln, Ln), (log, Log, base: f64), (log10, Log10), (log2, Log2),
     (recip, Recip),
@@ -397,6 +400,17 @@ fn graph_from_branch(rec: &OpRec, start: NodeIndex) -> OpRec {
     OpRec { graph: new_graph, last: node_mapping[&start], limit_bound: rec.limit_bound, roots: roots }
 }
 
+#[inline(always)]
+fn larger_parent_weight(graph: &OpRecGraph, last: NodeIndex) -> (NodeIndex, NodeIndex) {
+    let mut edges = graph.edges_directed(last, petgraph::Incoming);
+    let temp1 = edges.next().unwrap();
+    let temp2 = edges.next().unwrap();
+    if temp1.weight() > temp2.weight() {
+        (temp1.source(), temp2.source())
+    } else {
+        (temp2.source(), temp1.source())
+    }
+}
 
 fn merge_oprec_at(merger: OpRec, mergee: &mut OpRec, at: NodeIndex) {
     let mut node_mappings: HashMap<NodeIndex, NodeIndex> = HashMap::new();
@@ -413,36 +427,51 @@ fn merge_oprec_at(merger: OpRec, mergee: &mut OpRec, at: NodeIndex) {
     mergee.graph.add_edge(mergee.last, at, 1);
 }
 
-#[inline(always)]
-fn is_intersection(node: &Ops) -> bool {
-    match node {
-        &Ops::Add => true,
-        &Ops::Mul => true,
-        &Ops::Div => true,
-        &Ops::Sub => true,
-        &Ops::PowF => true,
-        &Ops::PowI => true,
-        &Ops::Log => true,
-        &Ops::Atan2 => true,
-        _ => false
-    }
-}
-
 fn get_derivative(rec: &OpRec, last: NodeIndex) -> OpRec {
-    // left, right, intersection
-    //let mut new_graph = OpRecGraph::new();
-    //let mut intersections: HashSet<NodeIndex> = HashSet::new();
-    //let mut finished_intersections = Vec::new();
-    //for root in &rec.roots {
-    //    println!("{:?}", root);
-    //    intersections.insert(root.intersection.unwrap());
-    //}
-    //unimplemented!();
     match rec.graph[last] {
         Ops::Sin => {
             let prev: NodeIndex = rec.graph.neighbors_directed(last, petgraph::Incoming).next().unwrap();
             graph_from_branch(&rec, prev).cos() * get_derivative(rec, prev)
         },
+        Ops::Var => OpRec::from(1f64),
+        Ops::Const(_) => OpRec::from(0f64),
+        Ops::Cos => {
+            let prev: NodeIndex = rec.graph.neighbors_directed(last, petgraph::Incoming).next().unwrap();
+            (graph_from_branch(&rec, prev).sin() * OpRec::from(-1f64)) * get_derivative(rec, prev)
+        },
+        Ops::Mul => {
+            let mut neighbors = rec.graph.neighbors_directed(last, petgraph::Incoming);
+            let (left, right) = (neighbors.next().unwrap(), neighbors.next().unwrap());
+            (graph_from_branch(&rec, left)*get_derivative(&rec, right)) + (graph_from_branch(&rec, right)*get_derivative(&rec, left))
+        },
+        Ops::Pow => {
+            let (left, right) = larger_parent_weight(&rec.graph, last);
+            let right_branch = graph_from_branch(&rec, right);
+            let const_right = match rec.graph[right] {
+                Ops::Const(x) => x,
+                _ => unreachable!("Technically should not be possible")
+            };
+            (graph_from_branch(&rec, left).powf(const_right-1f64)) * (right_branch*get_derivative(rec, left))
+        },
+        Ops::Tan => {
+            let prev: NodeIndex = rec.graph.neighbors_directed(last, petgraph::Incoming).next().unwrap();
+            (graph_from_branch(&rec, prev).cos().recip().powi(2)) * get_derivative(rec, prev)
+        },
+        Ops::Add => {
+            let mut neighbors = rec.graph.neighbors_directed(last, petgraph::Incoming);
+            let (left, right) = (neighbors.next().unwrap(), neighbors.next().unwrap());
+            get_derivative(&rec, left) + get_derivative(rec, right)
+        },
+        Ops::Div => {
+            let (left, right) = larger_parent_weight(&rec.graph, last);
+            let right_branch = graph_from_branch(&rec, right);
+            let left_branch = graph_from_branch(&rec, left);
+            ((right_branch.clone()*get_derivative(&rec, left))-(left_branch*get_derivative(rec, right)))/(right_branch.powi(2))            
+        },
+        Ops::Sub => {
+            let (left, right) = larger_parent_weight(&rec.graph, last);
+            get_derivative(&rec, left) - get_derivative(rec, right)
+        }
         _ => OpRec::new().cos()
     }
 }
@@ -450,6 +479,9 @@ fn get_derivative(rec: &OpRec, last: NodeIndex) -> OpRec {
 fn main() {
     let mut test = OpRec::new();
     test *= 4;
-    test = test.sin().cos().tan().mul_add(3, 5);
+    test = test.sin();
+    test = test.powf(3f64);
+    test = test.differentiate();
     println!("{:?}", petgraph::dot::Dot::with_config(&test.graph, &[petgraph::dot::Config::EdgeNoLabel]));
+    //println!("{:?}", petgraph::dot::Dot::with_config(&get_derivative(&test, test.last).graph, &[petgraph::dot::Config::EdgeNoLabel]));
 }
