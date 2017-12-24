@@ -1,4 +1,4 @@
-#![feature(trace_macros, conservative_impl_trait)]
+//#![feature(trace_macros, conservative_impl_trait)]
 //trace_macros!(true);
 
 extern crate petgraph;
@@ -327,9 +327,9 @@ impl OpRec {
         (self + 1f64).ln()
     }
     
-    fn functify<T: Into<f64>>(self, a: T) -> impl Fn(f64) -> f64 {
+    fn functify<T: Into<f64>>(self, a: T) -> Box<Fn(f64) -> f64> {
         let z = a.into();
-        move |x| x + z
+        Box::new(move |x| x + z)
     }
     
     fn differentiate(self) -> OpRec {
