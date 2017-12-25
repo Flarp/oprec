@@ -76,7 +76,6 @@ macro_rules! impl_oprec_op_mut {
             }
         }
     }
-    
 }
 
 macro_rules! impl_op_mut {
@@ -419,10 +418,11 @@ impl_oprec_method!(
 );
 
 fn oprec_to_function(rec: &OpRec, last: NodeIndex) -> Box<Fn(HashMap<u64, f64>) -> f64> {
-    match OpRec::is_oprec_method(&rec.graph[rec.last]) {
+    match OpRec::is_oprec_method(&rec.graph[last]) {
         Ok(func) => {
             let prev: NodeIndex = rec.graph.neighbors_directed(rec.last, petgraph::Incoming).next().unwrap();
-            let inner_func = oprec_to_function(&graph_from_branch(rec, prev), prev);
+            let graph = graph_from_branch(rec, prev);
+            let inner_func = oprec_to_function(&graph, graph.last);
             Box::new(move |x| func(inner_func(x)))
         },
         Err(x) => match x {
@@ -657,11 +657,13 @@ fn get_derivative(rec: &OpRec, last: NodeIndex) -> OpRec {
 
 fn main() {
     let mut test = OpRec::new();
-    test = test - 7;
-    let func = test.clone().functify();
+    test *= 4;
+    test = test.cos();
+    test = test.differentiate();
     let mut hash = HashMap::new();
-    hash.insert(test.id, 4f64);
-    println!("{}", func(hash));
+    hash.insert(test.id, 100f64);
     println!("{:?}", petgraph::dot::Dot::with_config(&test.graph, &[petgraph::dot::Config::EdgeNoLabel]));
     //println!("{:?}", petgraph::dot::Dot::with_config(&get_derivative(&test, test.last).graph, &[petgraph::dot::Config::EdgeNoLabel]));
+    let func = test.clone().functify();
+    println!("{}", func(hash));
 }
