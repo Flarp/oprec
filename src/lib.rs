@@ -1,6 +1,7 @@
 //#![feature(trace_macros, conservative_impl_trait)]
 
 extern crate petgraph;
+extern crate rand;
 use std::ops::*;
 use std::collections::HashMap;
 use petgraph::prelude::*;
@@ -133,6 +134,14 @@ macro_rules! impl_oprec_method {
             }
             )*
         }
+        
+        #[inline(always)]
+        fn is_oprec_method(g: Ops) -> Option<Box<Fn(f64) -> f64>> {
+            match g {
+                $(Ops::$upper => Some(Box::new(f64::$lower)),)*
+                _ => None
+            }
+        }
     };
 }
 
@@ -196,7 +205,7 @@ macro_rules! impl_type {
             fn from(x: $ty) -> OpRec {
                 let mut graph = OpRecGraph::new();
                 let constant = graph.add_node(Ops::Const(f64::from(x)));
-                OpRec { graph: graph, roots: vec![], last: constant, limit_bound: 1_000_000u64 }
+                OpRec { id: rand::random::<u64>(), graph: graph, roots: vec![], last: constant }
             }
         }
         impl_op!(add, Add, $ty);
@@ -221,7 +230,7 @@ macro_rules! impl_type {
 
 impl_type!(f64, f32, i8, i16, i32, u8, u16, u32);
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 enum Ops {
     Sin,
     Cos,
@@ -243,7 +252,7 @@ enum Ops {
     Mul,
     Div,
     Const(f64),
-    Var,
+    Var(u64),
     Abs,
 }
 
@@ -253,7 +262,7 @@ enum OpRecArg {
     Const(f64)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 struct RootIntersection {
     root: NodeIndex,
     intersection: Option<NodeIndex>
@@ -264,7 +273,7 @@ struct OpRec {
     roots: Vec<RootIntersection>,
     last: NodeIndex,
     graph: Graph<Ops, u8>,
-    limit_bound: u64
+    id: u64
 }
 
 //#[derive(Debug, Clone)]
@@ -337,16 +346,12 @@ quick_impl_arg!(
 
 impl OpRec {
     fn new() -> OpRec {
+        let id = rand::random::<u64>();
         let mut graph = petgraph::graph::Graph::<Ops, u8>::new();
-        let root = graph.add_node(Ops::Var);
-        OpRec { graph: graph, roots: vec![RootIntersection { root: root, intersection: None }], last: root, limit_bound: 1_000_000u64 }
+        let root = graph.add_node(Ops::Var(id));
+        OpRec { id: id, graph: graph, roots: vec![RootIntersection { root: root, intersection: None }], last: root }
     }
     
-    fn limit_bound(self, x: u64) -> OpRec {
-        let mut notself = self.clone();
-        notself.limit_bound = x;
-        notself
-    }
     // mul_add must be implemented separately because
     // it is two operations in one function
     
@@ -373,13 +378,27 @@ impl OpRec {
         OpRec::from(2).powf(self)
     }
     
-    fn functify<T: Into<f64>>(self, a: T) -> Box<Fn(f64) -> f64> {
-        let z = a.into();
-        Box::new(move |x| x + z)
+    fn functify(self) -> Box<Fn(HashMap<u64, f64>) -> f64> {
+        oprec_to_function(&self)
     }
     
     fn differentiate(self) -> OpRec {
         get_derivative(&self, self.last)
+    }
+    
+    fn differentiate_wrt(self, respect: &OpRec) -> OpRec {
+        let mut notself = self.clone();
+        notself.id = respect.id;
+        get_derivative(&notself, notself.last)
+    }
+    
+    fn id(self, z: Option<u64>) -> OpRec {
+        let mut notself = self.clone();
+        notself.id = match z {
+            Some(x) => x,
+            None => rand::random::<u64>()
+        };
+        notself
     }
     
 }
@@ -392,6 +411,19 @@ impl_oprec_method!(
     (powf, Pow, float: f64), (powi, Pow, int: i32),
     (exp, Exp), (ln, Ln), (abs, Abs)
 );
+
+fn oprec_to_function(rec: &OpRec) -> Box<Fn(HashMap<u64, f64>) -> f64> {
+    match rec.graph[rec.last] {
+        Ops::Cos => {
+            let prev: NodeIndex = rec.graph.neighbors_directed(rec.last, petgraph::Incoming).next().unwrap();
+            let func = oprec_to_function(&graph_from_branch(rec, prev));
+            Box::new(move |x| f64::cos(func(x)))
+        },
+        Ops::Const(z) => Box::new(move |x| z),
+        Ops::Var(z) => Box::new(move |x| x[&z]),
+        _ => Box::new(move |x| 5f64)
+    }
+}
 
 type OpRecGraph = Graph<Ops, u8>;
 
@@ -426,7 +458,7 @@ fn graph_from_branch(rec: &OpRec, start: NodeIndex) -> OpRec {
             }
         }
     }
-    OpRec { graph: new_graph, last: node_mapping[&start], limit_bound: rec.limit_bound, roots: roots }
+    OpRec { id: rec.id, graph: new_graph, last: node_mapping[&start], roots: roots }
 }
 
 #[inline(always)]
@@ -464,7 +496,11 @@ fn get_derivative(rec: &OpRec, last: NodeIndex) -> OpRec {
             let prev: NodeIndex = rec.graph.neighbors_directed(last, petgraph::Incoming).next().unwrap();
             graph_from_branch(&rec, prev).cos() * get_derivative(rec, prev)
         },
-        Ops::Var => OpRec::from(1f64),
+        Ops::Var(z) => if z == rec.id {
+            OpRec::from(1f64)
+        } else {
+            OpRec::from(0f64)
+        },
         Ops::Const(_) => OpRec::from(0f64),
         Ops::Cos => {
             let prev: NodeIndex = rec.graph.neighbors_directed(last, petgraph::Incoming).next().unwrap();
@@ -561,7 +597,11 @@ fn get_derivative(rec: &OpRec, last: NodeIndex) -> OpRec {
 
 fn main() {
     let mut test = OpRec::new();
-    test = test.log(4);
+    test = test.cos();
+    let func = test.clone().functify();
+    let mut hash = HashMap::new();
+    hash.insert(test.id, 4f64);
+    println!("{}", func(hash));
     println!("{:?}", petgraph::dot::Dot::with_config(&test.graph, &[petgraph::dot::Config::EdgeNoLabel]));
     //println!("{:?}", petgraph::dot::Dot::with_config(&get_derivative(&test, test.last).graph, &[petgraph::dot::Config::EdgeNoLabel]));
 }
