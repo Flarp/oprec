@@ -1,4 +1,4 @@
-//#![feature(trace_macros, conservative_impl_trait)]
+#![feature(trace_macros, conservative_impl_trait)]
 
 extern crate petgraph;
 extern crate rand;
@@ -123,6 +123,13 @@ macro_rules! impl_oprec_method {
                 notself
             }
             )*
+            #[inline(always)]
+            fn is_oprec_method(g: &Ops) -> Result<Box<Fn(f64) -> f64>, Ops> {
+                match g {
+                    $(&Ops::$upper => is_oprec_method_macro!($lower $(,$var, $upper)*)),*
+                    ,_ => Err(g.clone())
+                }
+            }
         }
         impl OpRecArg {
             $(
@@ -134,14 +141,13 @@ macro_rules! impl_oprec_method {
             }
             )*
         }
-        
-        #[inline(always)]
-        fn is_oprec_method(g: Ops) -> Option<Box<Fn(f64) -> f64>> {
-            match g {
-                $(Ops::$upper => Some(Box::new(f64::$lower)),)*
-                _ => None
-            }
-        }
+    };
+}
+
+macro_rules! is_oprec_method_macro {
+    ($lower:ident, $var:ident, $upper:ident) => { Err(Ops::$upper) };
+    ($lower:ident) => {
+        Ok(Box::new(f64::$lower))
     };
 }
 
@@ -379,7 +385,7 @@ impl OpRec {
     }
     
     fn functify(self) -> Box<Fn(HashMap<u64, f64>) -> f64> {
-        oprec_to_function(&self)
+        oprec_to_function(&self, self.last)
     }
     
     fn differentiate(self) -> OpRec {
@@ -412,16 +418,70 @@ impl_oprec_method!(
     (exp, Exp), (ln, Ln), (abs, Abs)
 );
 
-fn oprec_to_function(rec: &OpRec) -> Box<Fn(HashMap<u64, f64>) -> f64> {
-    match rec.graph[rec.last] {
-        Ops::Cos => {
+fn oprec_to_function(rec: &OpRec, last: NodeIndex) -> Box<Fn(HashMap<u64, f64>) -> f64> {
+    match OpRec::is_oprec_method(&rec.graph[rec.last]) {
+        Ok(func) => {
             let prev: NodeIndex = rec.graph.neighbors_directed(rec.last, petgraph::Incoming).next().unwrap();
-            let func = oprec_to_function(&graph_from_branch(rec, prev));
-            Box::new(move |x| f64::cos(func(x)))
+            let inner_func = oprec_to_function(&graph_from_branch(rec, prev), prev);
+            Box::new(move |x| func(inner_func(x)))
         },
-        Ops::Const(z) => Box::new(move |x| z),
-        Ops::Var(z) => Box::new(move |x| x[&z]),
-        _ => Box::new(move |x| 5f64)
+        Err(x) => match x {
+            Ops::Const(z) => Box::new(move |_| z),
+            Ops::Var(z) => Box::new(move |x| x[&z]),
+            Ops::Pow => {
+                let (left, right) = larger_parent_weight(&rec.graph, last);
+                let (left_graph, right_graph) = (
+                    graph_from_branch(&rec, left),
+                    graph_from_branch(&rec, right)
+                );
+                let (left_func, right_func) = (
+                    oprec_to_function(&left_graph, left_graph.last), 
+                    oprec_to_function(&right_graph, right_graph.last)
+                );
+                Box::new(move |x| left_func(x.clone()).powf(right_func(x)))
+            },
+            Ops::Add => {
+                let mut neighbors = rec.graph.neighbors_directed(last, petgraph::Incoming);
+                let (left, right) = (neighbors.next().unwrap(), neighbors.next().unwrap());
+                let (left_graph, right_graph) = (graph_from_branch(&rec, left), graph_from_branch(&rec, right));
+                let (left_func, right_func) = (
+                    oprec_to_function(&left_graph, left_graph.last), 
+                    oprec_to_function(&right_graph, right_graph.last)
+                );
+                Box::new(move |x| left_func(x.clone()) + right_func(x))
+            },
+            Ops::Mul => {
+                let mut neighbors = rec.graph.neighbors_directed(last, petgraph::Incoming);
+                let (left, right) = (neighbors.next().unwrap(), neighbors.next().unwrap());
+                let (left_graph, right_graph) = (graph_from_branch(&rec, left), graph_from_branch(&rec, right));
+                let (left_func, right_func) = (
+                    oprec_to_function(&left_graph, left_graph.last), 
+                    oprec_to_function(&right_graph, right_graph.last)
+                );
+                Box::new(move |x| left_func(x.clone()) * right_func(x))
+            },
+            Ops::Div => {
+                let (left, right) = larger_parent_weight(&rec.graph, last);
+                let right_graph = graph_from_branch(&rec, right);
+                let left_graph = graph_from_branch(&rec, left);
+                let (left_func, right_func) = (
+                    oprec_to_function(&left_graph, left_graph.last), 
+                    oprec_to_function(&right_graph, right_graph.last)
+                );
+                Box::new(move |x| left_func(x.clone())/right_func(x))
+            },
+            Ops::Sub => {
+                let (left, right) = larger_parent_weight(&rec.graph, last);
+                let right_graph = graph_from_branch(&rec, right);
+                let left_graph = graph_from_branch(&rec, left);
+                let (left_func, right_func) = (
+                    oprec_to_function(&left_graph, left_graph.last), 
+                    oprec_to_function(&right_graph, right_graph.last)
+                );
+                Box::new(move |x| left_func(x.clone())-right_func(x))
+            }
+            _ => unreachable!()
+        }
     }
 }
 
@@ -597,7 +657,7 @@ fn get_derivative(rec: &OpRec, last: NodeIndex) -> OpRec {
 
 fn main() {
     let mut test = OpRec::new();
-    test = test.cos();
+    test = test - 7;
     let func = test.clone().functify();
     let mut hash = HashMap::new();
     hash.insert(test.id, 4f64);
