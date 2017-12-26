@@ -1,4 +1,4 @@
-#![feature(trace_macros, conservative_impl_trait)]
+//#![feature(trace_macros, conservative_impl_trait)]
 
 extern crate petgraph;
 extern crate rand;
