@@ -1,5 +1,5 @@
 //#![feature(trace_macros, conservative_impl_trait)]
-#![allow(dead_code, unreachable_patterns, non_camel_case_types)]
+#![allow(dead_code, unreachable_patterns, non_camel_case_types, non_upper_case_globals)]
 
 extern crate petgraph;
 extern crate rand;
@@ -7,13 +7,10 @@ use std::ops::*;
 use std::collections::HashMap;
 use petgraph::prelude::*;
 
-macro_rules! impl_oprec_op_intermediate {
-    ($lower:ident, $upper:ident, $string:expr) => {
+macro_rules! impl_oprec_op {
+    ($lower:ident, $upper:ident) => {
     impl $upper for OpRec {
             type Output = OpRec;
-            #[doc = "Computes `"]
-            #[doc = $string]
-            #[doc = "`."]
             fn $lower(self, rhs: OpRec) -> Self::Output {
                 let mut notself = self.clone();
                 let operation = notself.graph.add_node(Ops::$upper);
@@ -23,13 +20,6 @@ macro_rules! impl_oprec_op_intermediate {
             }
         }
     }
-}
-
-macro_rules! impl_oprec_op {
-    ($lower:ident, $upper:ident) => {
-        impl_oprec_op_intermediate!($lower, $upper, stringify!($lower));
-    }
-        
 }
 
 macro_rules! impl_oprec_op_mut {
@@ -55,13 +45,16 @@ macro_rules! impl_op_mut {
     }
 }
 
-macro_rules! impl_oprec_method {
-    ($(($lower:ident, $upper:ident $(, $var:ident : $ty:ty)*)),*) => {
+macro_rules! impl_oprec_method_intermediate {
+    ($(($str:expr, $lower:ident, $upper:ident $(, $var:ident : $ty:ty)*)),*) => {
         impl OpRec {
             $(
             // revolting hack to make already generic functions even
             // more generic
-            fn $lower$(<$var: Into<OpRec>>)*(self $(, $var : $var)*) -> OpRec {
+            #[doc = "Performs `"]
+            #[doc = $str]
+            #[doc = "` on the tree."]
+            pub fn $lower$(<$var: Into<OpRec>>)*(self $(, $var : $var)*) -> OpRec {
                 let mut notself = self.clone();
                 let operation = notself.graph.add_node(Ops::$upper);
                 notself.graph.add_edge(notself.last, operation, 1);
@@ -82,6 +75,13 @@ macro_rules! impl_oprec_method {
                 }
             }
         }
+    };
+
+}
+
+macro_rules! impl_oprec_method {
+    ($(($lower:ident, $upper:ident $(, $var:ident : $ty:ty)*)),*) => {
+        impl_oprec_method_intermediate!($((stringify!($lower), $lower, $upper $(, $var:$ty)*)),*);
     };
 }
 
@@ -255,6 +255,10 @@ impl OpRec {
     fn mul_add<T: Into<f64>>(self, mul: T, add: T) -> OpRec {
         (self*mul.into())+add.into()
     }
+
+    fn powi(self, i: i32) -> OpRec {
+        self.powf(f64::from(i))
+    }
     
     // sin_cos must be implemented separately because it returns
     // a tuple
@@ -305,7 +309,7 @@ impl_oprec_method!(
     (asin, Asin), (acos, Acos), (atan, Atan),
     (sinh, Sinh), (cosh, Cosh), (tanh, Tanh),
     (asinh, Asinh), (acosh, Acosh), (atanh, Atanh),
-    (powf, Pow, float: f64), (powi, Pow, int: i32),
+    (powf, Pow, float: f64),
     (exp, Exp), (ln, Ln), (abs, Abs)
 );
 
