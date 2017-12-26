@@ -6,10 +6,13 @@ use std::ops::*;
 use std::collections::HashMap;
 use petgraph::prelude::*;
 
-macro_rules! impl_oprec_op {
-    ($lower:ident, $upper:ident) => {
-        impl $upper for OpRec {
+macro_rules! impl_oprec_op_intermediate {
+    ($lower:ident, $upper:ident, $string:expr) => {
+    impl $upper for OpRec {
             type Output = OpRec;
+            #[doc = "Computes `"]
+            #[doc = $string]
+            #[doc = "`."]
             fn $lower(self, rhs: OpRec) -> Self::Output {
                 let mut notself = self.clone();
                 let operation = notself.graph.add_node(Ops::$upper);
@@ -36,6 +39,13 @@ macro_rules! impl_oprec_op {
             }
         }
     }
+}
+
+macro_rules! impl_oprec_op {
+    ($lower:ident, $upper:ident) => {
+        impl_oprec_op_intermediate!($lower, $upper, stringify!($lower));
+    }
+        
 }
 
 macro_rules! impl_oprec_op_mut {
