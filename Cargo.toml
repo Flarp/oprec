@@ -5,6 +5,7 @@ authors = ["flurpdadurp@gmail.com"]
 description = "Calculus crate that analyzes and transforms mathematical functions."
 repository = "https://github.com/flarp/oprec"
 documentation = "https://docs.rs/oprec"
+license = "MIT"
 
 [dependencies]
 petgraph = "0.4.10"
