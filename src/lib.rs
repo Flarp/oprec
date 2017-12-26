@@ -51,9 +51,7 @@ macro_rules! impl_oprec_method_intermediate {
             $(
             // revolting hack to make already generic functions even
             // more generic
-            #[doc = "Performs `"]
             #[doc = $str]
-            #[doc = "` on the tree."]
             pub fn $lower$(<$var: Into<OpRec>>)*(self $(, $var : $var)*) -> OpRec {
                 let mut notself = self.clone();
                 let operation = notself.graph.add_node(Ops::$upper);
@@ -81,7 +79,11 @@ macro_rules! impl_oprec_method_intermediate {
 
 macro_rules! impl_oprec_method {
     ($(($lower:ident, $upper:ident $(, $var:ident : $ty:ty)*)),*) => {
-        impl_oprec_method_intermediate!($((stringify!($lower), $lower, $upper $(, $var:$ty)*)),*);
+        impl_oprec_method_intermediate!($((
+            concat!("Performs [`", stringify!($lower), "`](https://doc.rust-lang.org/std/primitive.f64.html#method.",stringify!($lower),") on the tree."),
+            $lower, 
+            $upper 
+            $(, $var:$ty)*)),*);
     };
 }
 
@@ -218,82 +220,38 @@ pub struct OpRec {
 
 //type Polynomial = Vec<PolynomialTerm>;
 
+impl Default for OpRec {
+    fn default() -> Self {
+        OpRec::new()
+    }
+}
+
 impl OpRec {
-    fn new() -> OpRec {
+    /// Constructs a new `OpRec` with default parameters
+    pub fn new() -> OpRec {
         let id = rand::random::<u64>();
         let mut graph = petgraph::graph::Graph::<Ops, u8>::new();
         let root = graph.add_node(Ops::Var(id));
         OpRec { vars: vec![id], id: id, graph: graph, roots: vec![RootIntersection { root: root, intersection: None }], last: root }
     }
 
-    fn exp_m1(self) -> OpRec {
-        self.exp() - 1f64
-    }
-
-    fn ln_1p(self) -> OpRec {
-        (self+1f64).ln()
-    }
-    
-    fn log2(self) -> OpRec {
-        (self.ln())/(2f64.ln())
-    }
-
-    fn log10(self) -> OpRec {
-        (self.ln())/(10f64.ln())
-    }
-
-    fn cbrt(self) -> OpRec {
-        self.powf((1/3) as f64)
-    }
-
-    fn sqrt(self) -> OpRec {
-        self.powf((1/2) as f64)
-    }
-    // mul_add must be implemented separately because
-    // it is two operations in one function
-    
-    fn mul_add<T: Into<f64>>(self, mul: T, add: T) -> OpRec {
-        (self*mul.into())+add.into()
-    }
-
-    fn powi(self, i: i32) -> OpRec {
-        self.powf(f64::from(i))
-    }
-    
-    // sin_cos must be implemented separately because it returns
-    // a tuple
-    
-    fn sin_cos(self) -> (OpRec, OpRec) {
-        (self.clone().sin(), self.cos())
-    }
-
-    fn log<T: Into<OpRec>>(self, base: T) -> OpRec {
-        self.ln()/base.into().ln()
-    }
-    
-    fn hypot<T: Into<OpRec>>(self, rhs: T) -> OpRec {
-        (self.powi(2) + rhs.into().powi(2)).sqrt()
-    }
-    
-    fn exp2(self) -> OpRec {
-        OpRec::from(2).powf(self)
-    }
-    
-    fn functify(self) -> Box<Fn(HashMap<u64, f64>) -> Result<f64, u64>> {
+    /// Converts the current OpRec into a function that will reproduce the operations
+    /// applied to it to the functions arguments 
+    pub fn functify(self) -> Box<Fn(HashMap<u64, f64>) -> Result<f64, u64>> {
         oprec_to_function_check(&self, self.last)
     }
     
-    fn differentiate(self) -> OpRec {
+    pub fn differentiate(self) -> OpRec {
         get_derivative(&self, self.last)
     }
     
-    fn differentiate_wrt(self, respect: &OpRec) -> OpRec {
+    pub fn differentiate_wrt(self, respect: &OpRec) -> OpRec {
         let mut notself = self.clone();
         notself.id = respect.id;
         get_derivative(&notself, notself.last)
     }
     
-    fn id(self, z: Option<u64>) -> OpRec {
+    pub fn id(self, z: Option<u64>) -> OpRec {
         let mut notself = self.clone();
         notself.id = match z {
             Some(x) => x,
@@ -301,6 +259,72 @@ impl OpRec {
         };
         notself
     }
+    
+    #[doc = "Performs [`exp_m1`](https://doc.rust-lang.org/std/primitive.f64.html#method.exp_m1) on the tree."]
+    pub fn exp_m1(self) -> OpRec {
+        self.exp() - 1f64
+    }
+
+    #[doc = "Performs [`ln_1p`](https://doc.rust-lang.org/std/primitive.f64.html#method.ln_1p) on the tree."]
+    pub fn ln_1p(self) -> OpRec {
+        (self+1f64).ln()
+    }
+    
+    #[doc = "Performs [`log2`](https://doc.rust-lang.org/std/primitive.f64.html#method.log2) on the tree."]
+    pub fn log2(self) -> OpRec {
+        (self.ln())/(2f64.ln())
+    }
+
+    #[doc = "Performs [`log10`](https://doc.rust-lang.org/std/primitive.f64.html#method.log10) on the tree."]
+    pub fn log10(self) -> OpRec {
+        (self.ln())/(10f64.ln())
+    }
+
+    #[doc = "Performs [`cbrt`](https://doc.rust-lang.org/std/primitive.f64.html#method.cbrt) on the tree."]
+    pub fn cbrt(self) -> OpRec {
+        self.powf((1/3) as f64)
+    }
+
+    #[doc = "Performs [`sqrt`](https://doc.rust-lang.org/std/primitive.f64.html#method.sqrt) on the tree."]
+    pub fn sqrt(self) -> OpRec {
+        self.powf((1/2) as f64)
+    }
+    // mul_add must be implemented separately because
+    // it is two operations in one function
+    
+    #[doc = "Performs [`mul_add`](https://doc.rust-lang.org/std/primitive.f64.html#method.mul_add) on the tree."]
+    pub fn mul_add<T: Into<OpRec>>(self, mul: T, add: T) -> OpRec {
+        (self*mul.into())+add.into()
+    }
+
+    #[doc = "Performs [`powi`](https://doc.rust-lang.org/std/primitive.f64.html#method.powi) on the tree."]
+    pub fn powi(self, i: i32) -> OpRec {
+        self.powf(f64::from(i))
+    }
+    
+    // sin_cos must be implemented separately because it returns
+    // a tuple
+   
+    #[doc = "Performs [`sin_cos`](https://doc.rust-lang.org/std/primitive.f64.html#method.sin_cos) on the tree."] 
+    pub fn sin_cos(self) -> (OpRec, OpRec) {
+        (self.clone().sin(), self.cos())
+    }
+
+    #[doc = "Performs [`log`](https://doc.rust-lang.org/std/primitive.f64.html#method.log) on the tree."]
+    pub fn log<T: Into<OpRec>>(self, base: T) -> OpRec {
+        self.ln()/base.into().ln()
+    }
+    
+    #[doc = "Performs [`hypot`](https://doc.rust-lang.org/std/primitive.f64.html#method.hypot) on the tree."]
+    pub fn hypot<T: Into<OpRec>>(self, rhs: T) -> OpRec {
+        (self.powi(2) + rhs.into().powi(2)).sqrt()
+    }
+    
+    #[doc = "Performs [`exp2`](https://doc.rust-lang.org/std/primitive.f64.html#method.exp2) on the tree."]
+    pub fn exp2(self) -> OpRec {
+        OpRec::from(2).powf(self)
+    }
+   
     
 }
 
