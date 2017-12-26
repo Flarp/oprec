@@ -1,4 +1,5 @@
 //#![feature(trace_macros, conservative_impl_trait)]
+#![allow(dead_code, unreachable_patterns, non_camel_case_types)]
 
 extern crate petgraph;
 extern crate rand;
@@ -21,23 +22,6 @@ macro_rules! impl_oprec_op_intermediate {
                 notself
             }
         }
-        impl $upper for OpRecArg {
-            type Output = OpRecArg;
-            fn $lower(self, rhs: OpRecArg) -> Self::Output {
-                let mut notself = self.clone();
-                notself = match notself.clone() {
-                    OpRecArg::Const(x) => match rhs {
-                        OpRecArg::Const(y) => OpRecArg::Const(x.$lower(y)),
-                        OpRecArg::Rec(y) => OpRecArg::Rec(OpRec::from(x).$lower(y))
-                    },
-                    OpRecArg::Rec(x) => match rhs {
-                        OpRecArg::Rec(y) => OpRecArg::Rec(x.$lower(y)),
-                        OpRecArg::Const(y) => OpRecArg::Rec(x.$lower(y))
-                    }
-                };
-                notself
-            }
-        }
     }
 }
 
@@ -57,34 +41,6 @@ macro_rules! impl_oprec_op_mut {
                 self.last = operation;
             }
         }
-        
-        impl $upper for OpRecArg {
-            fn $lower(&mut self, rhs: OpRecArg) {
-                *self = match self.clone() {
-                    OpRecArg::Const(mut x) => match rhs {
-                        OpRecArg::Const(y) => {
-                            x.$lower(y);
-                            OpRecArg::Const(x)
-                        },
-                        OpRecArg::Rec(y) => {
-                            let mut z = OpRec::from(x);
-                            z.$lower(y);
-                            OpRecArg::Rec(z)
-                        }
-                    },
-                    OpRecArg::Rec(mut x) => match rhs {
-                        OpRecArg::Rec(y) => {
-                            x.$lower(y);
-                            OpRecArg::Rec(x)
-                        },
-                        OpRecArg::Const(y) => {
-                            x.$lower(y);
-                            OpRecArg::Rec(x)
-                        }
-                    }
-                };
-            }
-        }
     }
 }
 
@@ -96,20 +52,6 @@ macro_rules! impl_op_mut {
             }
         }
         
-        impl $upper<$ty> for OpRecArg {
-            fn $lower(&mut self, rhs: $ty) {
-                *self = match self.clone() {
-                    OpRecArg::Const(mut x) => {
-                        x.$lower(f64::from(rhs));
-                        OpRecArg::Const(x)
-                    },
-                    OpRecArg::Rec(mut x) => {
-                        x.$lower(rhs);
-                        OpRecArg::Rec(x)
-                    }
-                };
-            }
-        }
     }
 }
 
@@ -139,16 +81,6 @@ macro_rules! impl_oprec_method {
                     ,_ => Err(g.clone())
                 }
             }
-        }
-        impl OpRecArg {
-            $(
-            fn $lower(self $(, $var : $ty)*) -> OpRecArg {
-                match self {
-                    OpRecArg::Rec(x) => OpRecArg::Rec(x.$lower($($var)*)),
-                    OpRecArg::Const(x) => OpRecArg::Const(x.$lower($($var)*))
-                }
-            }
-            )*
         }
     };
 }
@@ -183,16 +115,6 @@ macro_rules! impl_op {
                 let mut notself = self.clone();
                 impl_op_inner!($upper, notself, $upper, rhs);
                 notself
-            }
-        }
-        
-        impl $upper<$ty> for OpRecArg {
-            type Output = OpRecArg;
-            fn $lower(self, rhs: $ty) -> Self::Output {
-                match self {
-                    OpRecArg::Const(x) => OpRecArg::Const(x.$lower(f64::from(rhs))),
-                    OpRecArg::Rec(x) => OpRecArg::Rec(x.$lower(rhs))
-                }
             }
         }
         
@@ -272,12 +194,6 @@ enum Ops {
     Abs,
 }
 
-#[derive(Debug, Clone)]
-enum OpRecArg {
-    Rec(OpRec),
-    Const(f64)
-}
-
 #[derive(Debug, Clone, PartialEq)]
 struct RootIntersection {
     root: NodeIndex,
@@ -285,7 +201,7 @@ struct RootIntersection {
 }
 
 #[derive(Debug, Clone)]
-struct OpRec {
+pub struct OpRec {
     roots: Vec<RootIntersection>,
     last: NodeIndex,
     graph: Graph<Ops, u8>,
@@ -302,65 +218,6 @@ struct OpRec {
 
 //type Polynomial = Vec<PolynomialTerm>;
 
-impl OpRecArg {
-    fn mul_add<T: Into<f64>>(self, mul: T, add: T) -> OpRecArg {
-        match self {
-            OpRecArg::Const(z) => OpRecArg::Const(z.mul_add(mul.into(), add.into())),
-            OpRecArg::Rec(z) => OpRecArg::Rec(z.mul_add(mul.into(), add.into()))
-        }
-    }
-    
-    fn sin_cos(self) -> (OpRecArg, OpRecArg) {
-        match self {
-            OpRecArg::Const(z) => (OpRecArg::Const(z.sin()), OpRecArg::Const(z.cos())),
-            OpRecArg::Rec(z) => (OpRecArg::Rec(z.clone().sin()), OpRecArg::Rec(z.cos())),
-        }
-    }
-    
-    fn hypot<T>(self, rhs: T) -> OpRecArg where f64: std::convert::From<T> {
-        match self {
-            OpRecArg::Const(z) => OpRecArg::Const((z.powi(2) + f64::from(rhs).powi(2)).sqrt()),
-            OpRecArg::Rec(z) => OpRecArg::Rec((z.powi(2) + OpRec::from(f64::from(rhs)).powi(2f64)).sqrt())
-        }
-    }
-    
-    fn exp2(self) -> OpRecArg {
-        match self {
-            OpRecArg::Const(z) => OpRecArg::Const(2f64.powf(z)),
-            OpRecArg::Rec(z) => OpRecArg::Rec(OpRec::from(2).powf(z))
-        }
-    }
-}
-
-macro_rules! quick_impl_arg {
-    ($inside:ident, $($i:ident -> $e:expr),*) => {
-        impl OpRecArg {
-            $(fn $i(self) -> OpRecArg {
-                match self {
-                    OpRecArg::Const($inside) => OpRecArg::Const($e),
-                    OpRecArg::Rec($inside) => OpRecArg::Rec($e)
-                }
-            })*
-        }
-        impl OpRec {
-            $(fn $i(self) -> OpRec {
-                let $inside = self;
-                $e
-            })*
-        }
-    }
-}
-
-quick_impl_arg!(
-    x,
-    exp_m1 -> x.exp() - 1f64,
-    ln_1p -> (x+1f64).ln(),
-    log2 -> x.ln()/2f64.ln(),
-    log10 -> x.ln()/10f64.ln(),
-    cbrt -> x.powf((1/3) as f64),
-    sqrt -> x.powf((1/2) as f64)
-);
-
 impl OpRec {
     fn new() -> OpRec {
         let id = rand::random::<u64>();
@@ -368,7 +225,30 @@ impl OpRec {
         let root = graph.add_node(Ops::Var(id));
         OpRec { vars: vec![id], id: id, graph: graph, roots: vec![RootIntersection { root: root, intersection: None }], last: root }
     }
+
+    fn exp_m1(self) -> OpRec {
+        self.exp() - 1f64
+    }
+
+    fn ln_1p(self) -> OpRec {
+        (self+1f64).ln()
+    }
     
+    fn log2(self) -> OpRec {
+        (self.ln())/(2f64.ln())
+    }
+
+    fn log10(self) -> OpRec {
+        (self.ln())/(10f64.ln())
+    }
+
+    fn cbrt(self) -> OpRec {
+        self.powf((1/3) as f64)
+    }
+
+    fn sqrt(self) -> OpRec {
+        self.powf((1/2) as f64)
+    }
     // mul_add must be implemented separately because
     // it is two operations in one function
     
@@ -680,20 +560,4 @@ fn get_derivative(rec: &OpRec, last: NodeIndex) -> OpRec {
             get_derivative(&rec, prev)/(1f64-graph_from_branch(&rec, prev).powi(2))
         }
     }
-}
-
-fn main() {
-    let mut test = OpRec::new();
-    let mut test2 = OpRec::new();
-    test2 += 8;
-    test *= test2;
-    test *= 4;
-    test = test.cos();
-    test = test.differentiate();
-    let mut hash = HashMap::new();
-    hash.insert(test.id, 100f64);
-    println!("{:?}", petgraph::dot::Dot::with_config(&test.graph, &[petgraph::dot::Config::EdgeNoLabel]));
-    //println!("{:?}", petgraph::dot::Dot::with_config(&get_derivative(&test, test.last).graph, &[petgraph::dot::Config::EdgeNoLabel]));
-    let func = test.clone().functify();
-    println!("{:?}", func(hash));
 }

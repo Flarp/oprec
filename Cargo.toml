@@ -6,3 +6,4 @@ description = "Calculus crate that analyzes and transforms mathematical function
 
 [dependencies]
 petgraph = "0.4.10"
+rand = "0.4"
