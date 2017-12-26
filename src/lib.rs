@@ -210,7 +210,8 @@ macro_rules! impl_type {
             fn from(x: $ty) -> OpRec {
                 let mut graph = OpRecGraph::new();
                 let constant = graph.add_node(Ops::Const(f64::from(x)));
-                OpRec { id: rand::random::<u64>(), graph: graph, roots: vec![], last: constant }
+                let id = rand::random::<u64>();
+                OpRec { vars: vec![id], id: id, graph: graph, roots: vec![], last: constant }
             }
         }
         impl_op!(add, Add, $ty);
@@ -278,7 +279,8 @@ struct OpRec {
     roots: Vec<RootIntersection>,
     last: NodeIndex,
     graph: Graph<Ops, u8>,
-    id: u64
+    id: u64,
+    vars: Vec<u64>
 }
 
 //#[derive(Debug, Clone)]
@@ -354,7 +356,7 @@ impl OpRec {
         let id = rand::random::<u64>();
         let mut graph = petgraph::graph::Graph::<Ops, u8>::new();
         let root = graph.add_node(Ops::Var(id));
-        OpRec { id: id, graph: graph, roots: vec![RootIntersection { root: root, intersection: None }], last: root }
+        OpRec { vars: vec![id], id: id, graph: graph, roots: vec![RootIntersection { root: root, intersection: None }], last: root }
     }
     
     // mul_add must be implemented separately because
@@ -383,8 +385,8 @@ impl OpRec {
         OpRec::from(2).powf(self)
     }
     
-    fn functify(self) -> Box<Fn(HashMap<u64, f64>) -> f64> {
-        oprec_to_function(&self, self.last)
+    fn functify(self) -> Box<Fn(HashMap<u64, f64>) -> Result<f64, u64>> {
+        oprec_to_function_check(&self, self.last)
     }
     
     fn differentiate(self) -> OpRec {
@@ -416,6 +418,18 @@ impl_oprec_method!(
     (powf, Pow, float: f64), (powi, Pow, int: i32),
     (exp, Exp), (ln, Ln), (abs, Abs)
 );
+
+fn oprec_to_function_check(x: &OpRec, last: NodeIndex) -> Box<Fn(HashMap<u64, f64>) -> Result<f64, u64>> {
+    let rec = x.clone();
+    Box::new(move |x| {
+        for var in rec.vars.iter() {
+            if x.get(var).is_none() {
+                return Err(*var)
+            }
+        }
+        Ok(oprec_to_function(&rec, last)(x))
+    })
+}
 
 fn oprec_to_function(rec: &OpRec, last: NodeIndex) -> Box<Fn(HashMap<u64, f64>) -> f64> {
     match OpRec::is_oprec_method(&rec.graph[last]) {
@@ -518,7 +532,7 @@ fn graph_from_branch(rec: &OpRec, start: NodeIndex) -> OpRec {
             }
         }
     }
-    OpRec { id: rec.id, graph: new_graph, last: node_mapping[&start], roots: roots }
+    OpRec { vars: rec.vars.clone(), id: rec.id, graph: new_graph, last: node_mapping[&start], roots: roots }
 }
 
 #[inline(always)]
@@ -536,6 +550,9 @@ fn larger_parent_weight(graph: &OpRecGraph, last: NodeIndex) -> (NodeIndex, Node
 fn merge_oprec_at(merger: OpRec, mergee: &mut OpRec, at: NodeIndex) {
     let mut node_mappings: HashMap<NodeIndex, NodeIndex> = HashMap::new();
     merger.roots.iter().map(|root| mergee.roots.push(root.clone())).count();
+    mergee.vars.append(&mut merger.vars.clone());
+    mergee.vars.sort_unstable();
+    mergee.vars.dedup();
     for index in merger.graph.node_indices() {
         let clone_node = merger.graph[index].clone();
         let final_index = mergee.graph.add_node(clone_node.clone());
@@ -657,6 +674,9 @@ fn get_derivative(rec: &OpRec, last: NodeIndex) -> OpRec {
 
 fn main() {
     let mut test = OpRec::new();
+    let mut test2 = OpRec::new();
+    test2 += 8;
+    test *= test2;
     test *= 4;
     test = test.cos();
     test = test.differentiate();
@@ -665,5 +685,5 @@ fn main() {
     println!("{:?}", petgraph::dot::Dot::with_config(&test.graph, &[petgraph::dot::Config::EdgeNoLabel]));
     //println!("{:?}", petgraph::dot::Dot::with_config(&get_derivative(&test, test.last).graph, &[petgraph::dot::Config::EdgeNoLabel]));
     let func = test.clone().functify();
-    println!("{}", func(hash));
+    println!("{:?}", func(hash));
 }
