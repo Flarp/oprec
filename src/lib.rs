@@ -1,11 +1,11 @@
 //#![feature(trace_macros, conservative_impl_trait)]
 #![allow(dead_code, unreachable_patterns, non_camel_case_types, non_upper_case_globals)]
 
-extern crate petgraph;
+pub extern crate petgraph;
 extern crate rand;
 use std::ops::*;
 use std::collections::HashMap;
-use petgraph::prelude::*;
+pub use petgraph::prelude::*;
 
 macro_rules! impl_oprec_op {
     ($lower:ident, $upper:ident) => {
@@ -171,7 +171,7 @@ macro_rules! impl_type {
 impl_type!(f64, f32, i8, i16, i32, u8, u16, u32);
 
 #[derive(Debug, Clone)]
-enum Ops {
+pub enum Ops {
     Sin,
     Cos,
     Tan,
@@ -325,6 +325,10 @@ impl OpRec {
         OpRec::from(2).powf(self)
     }
    
+   /// Returns a reference to the underlying graph
+    pub fn graph<'a>(&'a self) -> &'a OpRecGraph {
+        &self.graph
+    }
     
 }
 
@@ -417,7 +421,7 @@ fn oprec_to_function(rec: &OpRec, last: NodeIndex) -> Box<Fn(HashMap<u64, f64>) 
     }
 }
 
-type OpRecGraph = Graph<Ops, u8>;
+pub type OpRecGraph = Graph<Ops, u8>;
 
 fn graph_from_branch(rec: &OpRec, start: NodeIndex) -> OpRec {
     let graph = &rec.graph;
