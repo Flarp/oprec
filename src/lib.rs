@@ -2,15 +2,50 @@
 #![allow(dead_code, unreachable_patterns, non_camel_case_types, non_upper_case_globals)]
 
 /*
-
 #![feature(specialization, optin_builtin_traits)]
-
 use std::ops::*;
-
 auto trait notrec {}
 impl<T> !notrec for lmao<T> {}
-
 struct lmao<T>(T);
+
+
+
+trait InverseAdd<O>  {
+    fn inverse_add(&self, other: O) -> Self where Self:Sized;
+}
+
+
+impl<T, U: Clone + Add<T, Output=U>> InverseAdd<T> for U {
+    fn inverse_add(&self, other: T) -> U {
+        self.clone() + other
+    }
+}
+
+trait InverseSub<O>  {
+    fn inverse_sub(&self, other: O) -> Self where Self:Sized;
+}
+
+
+impl<T, U: Clone + Sub<T, Output=U>> InverseSub<T> for U {
+    fn inverse_sub(&self, other: T) -> U {
+        self.clone() - other
+    }
+}
+
+trait InverseMul<O>  {
+    fn inverse_mul(&self, other: O) -> Self where Self:Sized;
+}
+
+
+impl<T, U: Clone + Mul<T, Output=U>> InverseMul<T> for U {
+    fn inverse_mul(&self, other: T) -> U {
+        self.clone() * other
+    }
+}
+
+enum Operations<T> {
+    Add(Box<InverseAdd<T>>)
+}
 
 macro_rules! impl_op {
     ($(($lower:ident, $upper:ident)),*) => {
@@ -31,12 +66,11 @@ macro_rules! impl_op {
         )*
     }
 }
-
 impl_op!((add, Add), (sub, Sub), (div, Div), (mul, Mul));
-
 fn main() {
     lmao(4) + 4i32;
 }
+
 
 */
 
