@@ -1,6 +1,45 @@
 //#![feature(trace_macros, conservative_impl_trait)]
 #![allow(dead_code, unreachable_patterns, non_camel_case_types, non_upper_case_globals)]
 
+/*
+
+#![feature(specialization, optin_builtin_traits)]
+
+use std::ops::*;
+
+auto trait notrec {}
+impl<T> !notrec for lmao<T> {}
+
+struct lmao<T>(T);
+
+macro_rules! impl_op {
+    ($(($lower:ident, $upper:ident)),*) => {
+        $(
+        impl<U: notrec, T: $upper<U>> $upper<U> for lmao<T> {
+            type Output = lmao<T>;
+            fn $lower(self, lhs: U) -> Self::Output {
+                self
+            }
+        }
+        
+        impl<U: $upper<T>, T> $upper<lmao<T>> for lmao<U> {
+            type Output = lmao<T>;
+            fn $lower(self, lhs: lmao<T>) -> Self::Output {
+                lhs
+            }
+        }
+        )*
+    }
+}
+
+impl_op!((add, Add), (sub, Sub), (div, Div), (mul, Mul));
+
+fn main() {
+    lmao(4) + 4i32;
+}
+
+*/
+
 pub extern crate petgraph;
 extern crate rand;
 use std::ops::*;
