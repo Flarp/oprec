@@ -1,6 +1,6 @@
 [package]
 name = "oprec"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["flurpdadurp@gmail.com"]
 description = "Calculus crate that analyzes and transforms mathematical functions."
 repository = "https://github.com/flarp/oprec"
