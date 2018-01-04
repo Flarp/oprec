@@ -270,7 +270,7 @@ impl OpRec {
             let folder = |tuple: (OpRec, &OpRec)| {
                 tuple.0.partially_differentiate(&t)*tuple.1 
             };
-            iter.fold(folder(init), |prev, tuple| (prev.clone()+folder( (tuple.0.clone(), tuple.1) )).clone() )
+            iter.fold(folder(init), |prev, tuple| prev.clone()+folder( (tuple.0.clone(), tuple.1) ) )
         }
     }
     
