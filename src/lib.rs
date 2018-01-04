@@ -9,7 +9,7 @@ pub use petgraph::prelude::*;
 
 macro_rules! impl_oprec_op {
     ($lower:ident, $upper:ident) => {
-    impl $upper for OpRec {
+        impl $upper for OpRec {
             type Output = OpRec;
             fn $lower(self, rhs: OpRec) -> Self::Output {
                 let mut notself = self.clone();
@@ -19,6 +19,19 @@ macro_rules! impl_oprec_op {
                 notself
             }
         }
+        
+        impl<'a> $upper<&'a OpRec> for OpRec {
+            type Output = OpRec;
+            fn $lower(self, r: &OpRec) -> Self::Output {
+                let mut notself = self.clone();
+                let rhs = r.clone();
+                let operation = notself.graph.add_node(Ops::$upper);
+                merge_oprec_at(rhs, &mut notself, operation);
+                notself.last = operation;
+                notself
+            }
+        }
+        
     }
 }
 
@@ -98,7 +111,7 @@ macro_rules! impl_op_inner {
     ($upper:ident, $selfi:ident, $discriminant:ident, $rhs:ident) => {
         let rh_node = $selfi.graph.add_node(Ops::Const(f64::from($rhs)));
         let operation = $selfi.graph.add_node(Ops::$discriminant);
-        let root = RootIntersection { root: rh_node, intersection: Some(operation) };
+        let root = RootIntersection { root: rh_node, intersection: Some(operation), var: None };
         if $selfi.roots[0].intersection.is_none() {
             $selfi.roots[0].intersection = Some(operation);
         }
@@ -128,7 +141,7 @@ macro_rules! impl_op {
                 let operation = notself.graph.add_node(Ops::$upper);
                 notself.graph.add_edge(notself.last, operation, 0);
                 notself.graph.add_edge(lh_node, operation, 1);
-                let root = RootIntersection { root: lh_node, intersection: Some(operation) };
+                let root = RootIntersection { root: lh_node, intersection: Some(operation), var: Some(rhs.id()) };
                 notself.roots.push(root);
                 notself.last = operation;
                 notself
@@ -144,8 +157,8 @@ macro_rules! impl_type {
             fn from(x: $ty) -> OpRec {
                 let mut graph = OpRecGraph::new();
                 let constant = graph.add_node(Ops::Const(f64::from(x)));
-                let id = rand::random::<u64>();
-                OpRec { vars: vec![id], id: id, graph: graph, roots: vec![], last: constant }
+                let id = rand::random::<usize>();
+                OpRec { vars: vec![], id: id, graph: graph, roots: vec![], last: constant }
             }
         }
         impl_op!(add, Add, $ty);
@@ -192,14 +205,15 @@ pub enum Ops {
     Mul,
     Div,
     Const(f64),
-    Var(u64),
+    Var(usize),
     Abs,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 struct RootIntersection {
     root: NodeIndex,
-    intersection: Option<NodeIndex>
+    intersection: Option<NodeIndex>,
+    var: Option<usize>
 }
 
 #[derive(Debug, Clone)]
@@ -207,18 +221,9 @@ pub struct OpRec {
     roots: Vec<RootIntersection>,
     last: NodeIndex,
     graph: Graph<Ops, u8>,
-    id: u64,
-    vars: Vec<u64>
+    id: usize,
+    vars: Vec<usize>
 }
-
-//#[derive(Debug, Clone)]
-//struct PolynomialTerm {
-//    exponent: f64,
-//    coefficient: f64,
-//    number: Option<f64>
-//}
-
-//type Polynomial = Vec<PolynomialTerm>;
 
 impl Default for OpRec {
     fn default() -> Self {
@@ -226,38 +231,59 @@ impl Default for OpRec {
     }
 }
 
+/// Returns the [Jacobian matrix](https://en.wikipedia.org/wiki/Jacobian_matrix_and_determinant) of `vec`.
+pub fn jacobian_matrix(vec: Vec<OpRec>) -> Vec<OpRec> {
+    vec.iter().map(|x| x.clone().differentiate()).collect()
+}
+
 impl OpRec {
     /// Constructs a new `OpRec` with default parameters
     pub fn new() -> OpRec {
-        let id = rand::random::<u64>();
+        let id = rand::random::<usize>();
         let mut graph = petgraph::graph::Graph::<Ops, u8>::new();
         let root = graph.add_node(Ops::Var(id));
-        OpRec { vars: vec![id], id: id, graph: graph, roots: vec![RootIntersection { root: root, intersection: None }], last: root }
+        OpRec { vars: vec![], id: id, graph: graph, roots: vec![RootIntersection { root: root, intersection: None, var: None }], last: root }
     }
 
     /// Converts the current OpRec into a function that will reproduce the operations
     /// applied to it to the functions arguments 
-    pub fn functify(self) -> Box<Fn(HashMap<u64, f64>) -> Result<f64, u64>> {
+    pub fn functify(self) -> Box<Fn(HashMap<usize, f64>) -> Result<f64, usize>> {
         oprec_to_function_check(&self, self.last)
     }
     
+    /// Get the derivative of the current `OpRec`.
+    /// If the current `OpRec` contains more than one variable, it will totally differentiate it.
+    /// If this is undesired, look at [`partially_differentiate`](struct.OpRec.html#method.partially_differentiate).
     pub fn differentiate(self) -> OpRec {
-        get_derivative(&self, self.last)
+        if self.vars.len() == 0 {
+            get_derivative(&self, self.last)
+        } else {
+            let others: Vec<OpRec> = self.roots.iter()
+            .filter(|root| root.var.is_some())
+            .map(|root| graph_from_branch(&self, root.intersection.unwrap()))
+            .collect();
+            let t = OpRec::new();
+            let matrix = jacobian_matrix(others.clone());
+            let mut iter = others.iter().zip(matrix.iter());
+            let temp_init = iter.next().unwrap();
+            let init = (temp_init.0.clone(), temp_init.1);
+            let folder = |tuple: (OpRec, &OpRec)| {
+                tuple.0.partially_differentiate(&t)*tuple.1 
+            };
+            iter.fold(folder(init), |prev, tuple| (prev.clone()+folder( (tuple.0.clone(), tuple.1) )).clone() )
+        }
     }
     
-    pub fn differentiate_wrt(self, respect: &OpRec) -> OpRec {
+    /// Get the derivative of the current `OpRec` with respect to `respect`
+    pub fn partially_differentiate(self, respect: &OpRec) -> OpRec {
         let mut notself = self.clone();
         notself.id = respect.id;
         get_derivative(&notself, notself.last)
     }
     
-    pub fn id(self, z: Option<u64>) -> OpRec {
-        let mut notself = self.clone();
-        notself.id = match z {
-            Some(x) => x,
-            None => rand::random::<u64>()
-        };
-        notself
+    /// Gets the ID of the current `OpRec`.
+    pub fn id(&self) -> usize {
+        self.id
     }
     
     #[doc = "Performs [`exp_m1`](https://doc.rust-lang.org/std/primitive.f64.html#method.exp_m1) on the tree."]
@@ -341,7 +367,7 @@ impl_oprec_method!(
     (exp, Exp), (ln, Ln), (abs, Abs)
 );
 
-fn oprec_to_function_check(x: &OpRec, last: NodeIndex) -> Box<Fn(HashMap<u64, f64>) -> Result<f64, u64>> {
+fn oprec_to_function_check(x: &OpRec, last: NodeIndex) -> Box<Fn(HashMap<usize, f64>) -> Result<f64, usize>> {
     let rec = x.clone();
     Box::new(move |x| {
         for var in rec.vars.iter() {
@@ -353,7 +379,7 @@ fn oprec_to_function_check(x: &OpRec, last: NodeIndex) -> Box<Fn(HashMap<u64, f6
     })
 }
 
-fn oprec_to_function(rec: &OpRec, last: NodeIndex) -> Box<Fn(HashMap<u64, f64>) -> f64> {
+fn oprec_to_function(rec: &OpRec, last: NodeIndex) -> Box<Fn(HashMap<usize, f64>) -> f64> {
     match OpRec::is_oprec_method(&rec.graph[last]) {
         Ok(func) => {
             let prev: NodeIndex = rec.graph.neighbors_directed(rec.last, petgraph::Incoming).next().unwrap();
@@ -448,9 +474,9 @@ fn graph_from_branch(rec: &OpRec, start: NodeIndex) -> OpRec {
     for root in &rec.roots {
         if node_mapping.get(&root.root).is_some() {
             if root.intersection.is_some() {
-                roots.push(RootIntersection { root: node_mapping[&root.root], intersection: node_mapping.get(&root.intersection.unwrap()).cloned() });
+                roots.push(RootIntersection { root: node_mapping[&root.root], intersection: node_mapping.get(&root.intersection.unwrap()).cloned(), var: root.var });
             } else {
-                roots.push(RootIntersection { root: node_mapping[&root.root], intersection: None })
+                roots.push(RootIntersection { root: node_mapping[&root.root], intersection: None, var: root.var })
             }
         }
     }
