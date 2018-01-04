@@ -1,20 +1,12 @@
-//#![feature(trace_macros, conservative_impl_trait)]
-#![allow(dead_code, unreachable_patterns, non_camel_case_types, non_upper_case_globals)]
-
-/*
-#![feature(specialization, optin_builtin_traits)]
+#![feature(optin_builtin_traits)]
 use std::ops::*;
-auto trait notrec {}
-impl<T> !notrec for lmao<T> {}
-struct lmao<T>(T);
-
+auto trait NotRec {}
+impl<T> !NotRec for OpRec<T> {}
 
 
 trait InverseAdd<O>  {
     fn inverse_add(&self, other: O) -> Self where Self:Sized;
 }
-
-
 impl<T, U: Clone + Add<T, Output=U>> InverseAdd<T> for U {
     fn inverse_add(&self, other: T) -> U {
         self.clone() + other
@@ -24,8 +16,6 @@ impl<T, U: Clone + Add<T, Output=U>> InverseAdd<T> for U {
 trait InverseSub<O>  {
     fn inverse_sub(&self, other: O) -> Self where Self:Sized;
 }
-
-
 impl<T, U: Clone + Sub<T, Output=U>> InverseSub<T> for U {
     fn inverse_sub(&self, other: T) -> U {
         self.clone() - other
@@ -35,31 +25,41 @@ impl<T, U: Clone + Sub<T, Output=U>> InverseSub<T> for U {
 trait InverseMul<O>  {
     fn inverse_mul(&self, other: O) -> Self where Self:Sized;
 }
-
-
 impl<T, U: Clone + Mul<T, Output=U>> InverseMul<T> for U {
     fn inverse_mul(&self, other: T) -> U {
         self.clone() * other
     }
 }
 
+trait InverseDiv<O>  {
+    fn inverse_div(&self, other: O) -> Self where Self:Sized;
+}
+impl<T, U: Clone + Div<T, Output=U>> InverseDiv<T> for U {
+    fn inverse_div(&self, other: T) -> U {
+        self.clone() / other
+    }
+}
+
 enum Operations<T> {
-    Add(Box<InverseAdd<T>>)
+    Add(Box<InverseAdd<T>>),
+    Sub(Box<InverseSub<T>>),
+    Mul(Box<InverseMul<T>>),
+    Div(Box<InverseDiv<T>>)
 }
 
 macro_rules! impl_op {
     ($(($lower:ident, $upper:ident)),*) => {
         $(
-        impl<U: notrec, T: $upper<U>> $upper<U> for lmao<T> {
-            type Output = lmao<T>;
+        impl<U: NotRec, T: $upper<U>> $upper<U> for OpRec<T> {
+            type Output = OpRec<T>;
             fn $lower(self, lhs: U) -> Self::Output {
                 self
             }
         }
         
-        impl<U: $upper<T>, T> $upper<lmao<T>> for lmao<U> {
-            type Output = lmao<T>;
-            fn $lower(self, lhs: lmao<T>) -> Self::Output {
+        impl<U: $upper<T>, T> $upper<OpRec<T>> for OpRec<U> {
+            type Output = OpRec<T>;
+            fn $lower(self, lhs: OpRec<T>) -> Self::Output {
                 lhs
             }
         }
@@ -67,18 +67,12 @@ macro_rules! impl_op {
     }
 }
 impl_op!((add, Add), (sub, Sub), (div, Div), (mul, Mul));
-fn main() {
-    lmao(4) + 4i32;
-}
-
-
-*/
 
 pub extern crate petgraph;
 extern crate rand;
-use std::ops::*;
 use std::collections::HashMap;
 pub use petgraph::prelude::*;
+use std::fmt::Debug;
 
 macro_rules! impl_oprec_op {
     ($lower:ident, $upper:ident) => {
@@ -139,7 +133,7 @@ macro_rules! impl_oprec_method_intermediate {
             }
             )*
             #[inline(always)]
-            fn is_oprec_method(g: &Ops) -> Result<Box<Fn(f64) -> f64>, Ops> {
+            fn is_oprec_method<T>(g: &Ops<T>) -> Result<Box<Fn(T) -> T>, Ops<T>> {
                 match g {
                     $(&Ops::$upper => is_oprec_method_macro!($lower $(,$var, $upper)*)),*
                     ,_ => Err(g.clone())
@@ -210,6 +204,7 @@ macro_rules! impl_op {
     }
 }
 
+/*
 macro_rules! impl_type {
     ($($ty:ty),*) => {
         $(
@@ -242,9 +237,10 @@ macro_rules! impl_type {
 }
 
 impl_type!(f64, f32, i8, i16, i32, u8, u16, u32);
+*/
 
 #[derive(Debug, Clone)]
-pub enum Ops {
+pub enum Ops<T> {
     Sin,
     Cos,
     Tan,
@@ -264,7 +260,7 @@ pub enum Ops {
     Sub,
     Mul,
     Div,
-    Const(f64),
+    Const(Operations<T>),
     Var(u64),
     Abs,
 }
@@ -276,12 +272,17 @@ struct RootIntersection {
 }
 
 #[derive(Debug, Clone)]
-pub struct OpRec {
+pub struct OpRec<T: Debug + Clone> {
     roots: Vec<RootIntersection>,
     last: NodeIndex,
-    graph: Graph<Ops, u8>,
+    graph: Graph<Ops<T>, u8>,
     id: u64,
     vars: Vec<u64>
+}
+
+struct Functions<T> {
+    sin: Fn(T) -> T,
+    cos: Fn(T) -> T,
 }
 
 //#[derive(Debug, Clone)]
@@ -293,38 +294,33 @@ pub struct OpRec {
 
 //type Polynomial = Vec<PolynomialTerm>;
 
-impl Default for OpRec {
-    fn default() -> Self {
-        OpRec::new()
-    }
-}
 
-impl OpRec {
+impl<T> OpRec<T> {
     /// Constructs a new `OpRec` with default parameters
     pub fn new() -> OpRec {
         let id = rand::random::<u64>();
-        let mut graph = petgraph::graph::Graph::<Ops, u8>::new();
+        let mut graph = petgraph::graph::Graph::<Ops<T>, u8>::new();
         let root = graph.add_node(Ops::Var(id));
         OpRec { vars: vec![id], id: id, graph: graph, roots: vec![RootIntersection { root: root, intersection: None }], last: root }
     }
 
     /// Converts the current OpRec into a function that will reproduce the operations
     /// applied to it to the functions arguments 
-    pub fn functify(self) -> Box<Fn(HashMap<u64, f64>) -> Result<f64, u64>> {
+    pub fn functify(self) -> Box<Fn(HashMap<u64, T>) -> Result<T, u64>> {
         oprec_to_function_check(&self, self.last)
     }
     
-    pub fn differentiate(self) -> OpRec {
+    pub fn differentiate(self) -> OpRec<T> {
         get_derivative(&self, self.last)
     }
     
-    pub fn differentiate_wrt(self, respect: &OpRec) -> OpRec {
+    pub fn differentiate_wrt(self, respect: &OpRec<T>) -> OpRec<T> {
         let mut notself = self.clone();
         notself.id = respect.id;
         get_derivative(&notself, notself.last)
     }
     
-    pub fn id(self, z: Option<u64>) -> OpRec {
+    pub fn id(self, z: Option<u64>) -> OpRec<T> {
         let mut notself = self.clone();
         notself.id = match z {
             Some(x) => x,
@@ -334,40 +330,40 @@ impl OpRec {
     }
     
     #[doc = "Performs [`exp_m1`](https://doc.rust-lang.org/std/primitive.f64.html#method.exp_m1) on the tree."]
-    pub fn exp_m1(self) -> OpRec {
+    pub fn exp_m1(self) -> OpRec<T> {
         self.exp() - 1f64
     }
 
     #[doc = "Performs [`ln_1p`](https://doc.rust-lang.org/std/primitive.f64.html#method.ln_1p) on the tree."]
-    pub fn ln_1p(self) -> OpRec {
+    pub fn ln_1p(self) -> OpRec<T> {
         (self+1f64).ln()
     }
     
     #[doc = "Performs [`log2`](https://doc.rust-lang.org/std/primitive.f64.html#method.log2) on the tree."]
-    pub fn log2(self) -> OpRec {
+    pub fn log2(self) -> OpRec<T> {
         (self.ln())/(2f64.ln())
     }
 
     #[doc = "Performs [`log10`](https://doc.rust-lang.org/std/primitive.f64.html#method.log10) on the tree."]
-    pub fn log10(self) -> OpRec {
+    pub fn log10(self) -> OpRec<T> {
         (self.ln())/(10f64.ln())
     }
 
     #[doc = "Performs [`cbrt`](https://doc.rust-lang.org/std/primitive.f64.html#method.cbrt) on the tree."]
-    pub fn cbrt(self) -> OpRec {
+    pub fn cbrt(self) -> OpRec<T> {
         self.powf((1/3) as f64)
     }
 
     #[doc = "Performs [`sqrt`](https://doc.rust-lang.org/std/primitive.f64.html#method.sqrt) on the tree."]
-    pub fn sqrt(self) -> OpRec {
+    pub fn sqrt(self) -> OpRec<T> {
         self.powf((1/2) as f64)
     }
     // mul_add must be implemented separately because
     // it is two operations in one function
     
     #[doc = "Performs [`mul_add`](https://doc.rust-lang.org/std/primitive.f64.html#method.mul_add) on the tree."]
-    pub fn mul_add<T: Into<OpRec>>(self, mul: T, add: T) -> OpRec {
-        (self*mul.into())+add.into()
+    pub fn mul_add<M: InverseMul<T>, A: InverseAdd<T>>(self, mul: M, add: A) -> OpRec<T> {
+        (self*mul)+add
     }
 
     #[doc = "Performs [`powi`](https://doc.rust-lang.org/std/primitive.f64.html#method.powi) on the tree."]
@@ -379,27 +375,27 @@ impl OpRec {
     // a tuple
    
     #[doc = "Performs [`sin_cos`](https://doc.rust-lang.org/std/primitive.f64.html#method.sin_cos) on the tree."] 
-    pub fn sin_cos(self) -> (OpRec, OpRec) {
+    pub fn sin_cos(self) -> (OpRec<T>, OpRec<T>) {
         (self.clone().sin(), self.cos())
     }
 
     #[doc = "Performs [`log`](https://doc.rust-lang.org/std/primitive.f64.html#method.log) on the tree."]
-    pub fn log<T: Into<OpRec>>(self, base: T) -> OpRec {
-        self.ln()/base.into().ln()
+    pub fn log<D: InverseDiv<T>>(self, base: D) -> OpRec {
+        self.ln()/base.ln()
     }
     
     #[doc = "Performs [`hypot`](https://doc.rust-lang.org/std/primitive.f64.html#method.hypot) on the tree."]
-    pub fn hypot<T: Into<OpRec>>(self, rhs: T) -> OpRec {
-        (self.powi(2) + rhs.into().powi(2)).sqrt()
+    pub fn hypot<A: InverseAdd<T> + Mul<A>>(self, rhs: A) -> OpRec {
+        (self.powi(2) + (rhs * rhs)).sqrt()
     }
     
     #[doc = "Performs [`exp2`](https://doc.rust-lang.org/std/primitive.f64.html#method.exp2) on the tree."]
-    pub fn exp2(self) -> OpRec {
+    pub fn exp2(self) -> OpRec<T> {
         OpRec::from(2).powf(self)
     }
    
    /// Returns a reference to the underlying graph
-    pub fn graph<'a>(&'a self) -> &'a OpRecGraph {
+    pub fn graph<'a>(&'a self) -> &'a OpRecGraph<T> {
         &self.graph
     }
     
@@ -414,7 +410,7 @@ impl_oprec_method!(
     (exp, Exp), (ln, Ln), (abs, Abs)
 );
 
-fn oprec_to_function_check(x: &OpRec, last: NodeIndex) -> Box<Fn(HashMap<u64, f64>) -> Result<f64, u64>> {
+fn oprec_to_function_check<T>(x: &OpRec<T>, last: NodeIndex) -> Box<Fn(HashMap<u64, T>) -> Result<T, u64>> {
     let rec = x.clone();
     Box::new(move |x| {
         for var in rec.vars.iter() {
@@ -426,7 +422,7 @@ fn oprec_to_function_check(x: &OpRec, last: NodeIndex) -> Box<Fn(HashMap<u64, f6
     })
 }
 
-fn oprec_to_function(rec: &OpRec, last: NodeIndex) -> Box<Fn(HashMap<u64, f64>) -> f64> {
+fn oprec_to_function<T>(rec: &OpRec<T>, last: NodeIndex) -> Box<Fn(HashMap<u64, T>) -> T> {
     match OpRec::is_oprec_method(&rec.graph[last]) {
         Ok(func) => {
             let prev: NodeIndex = rec.graph.neighbors_directed(rec.last, petgraph::Incoming).next().unwrap();
@@ -457,7 +453,7 @@ fn oprec_to_function(rec: &OpRec, last: NodeIndex) -> Box<Fn(HashMap<u64, f64>) 
                     oprec_to_function(&left_graph, left_graph.last), 
                     oprec_to_function(&right_graph, right_graph.last)
                 );
-                Box::new(move |x| left_func(x.clone()) + right_func(x))
+                Box::new(move |x| left_func(x.clone()).inverse_add(right_func(x)))
             },
             Ops::Mul => {
                 let mut neighbors = rec.graph.neighbors_directed(last, petgraph::Incoming);
@@ -494,9 +490,9 @@ fn oprec_to_function(rec: &OpRec, last: NodeIndex) -> Box<Fn(HashMap<u64, f64>) 
     }
 }
 
-pub type OpRecGraph = Graph<Ops, u8>;
+pub type OpRecGraph<T> = Graph<Ops<T>, u8>;
 
-fn graph_from_branch(rec: &OpRec, start: NodeIndex) -> OpRec {
+fn graph_from_branch<T>(rec: &OpRec<T>, start: NodeIndex) -> OpRec<T> {
     let graph = &rec.graph;
     let mut next_nodes = Vec::new();
     let mut node_mapping = HashMap::new();
@@ -531,7 +527,7 @@ fn graph_from_branch(rec: &OpRec, start: NodeIndex) -> OpRec {
 }
 
 #[inline(always)]
-fn larger_parent_weight(graph: &OpRecGraph, last: NodeIndex) -> (NodeIndex, NodeIndex) {
+fn larger_parent_weight<T>(graph: &OpRecGraph<T>, last: NodeIndex) -> (NodeIndex, NodeIndex) {
     let mut edges = graph.edges_directed(last, petgraph::Incoming);
     let temp1 = edges.next().unwrap();
     let temp2 = edges.next().unwrap();
@@ -541,6 +537,18 @@ fn larger_parent_weight(graph: &OpRecGraph, last: NodeIndex) -> (NodeIndex, Node
         (temp2.source(), temp1.source())
     }
 }
+
+/*
+fn merge_oprec_add<T, A: InverseAdd<T>(merger: OpRec<A>, mergee: &mut OpRec<T>, at: NodeIndex) {
+    merge_oprec_at(merger, mergee, at)
+}
+fn merge_oprec_sub<T, S: InverseSub<T>>(merger: OpRec, mergee: &mut OpRec, at: NodeIndex) {
+    merge_oprec_at(merger, mergee, at)
+}
+
+fn merge_oprec_mul() {}
+fn merge_oprec_div() {}
+*/
 
 fn merge_oprec_at(merger: OpRec, mergee: &mut OpRec, at: NodeIndex) {
     let mut node_mappings: HashMap<NodeIndex, NodeIndex> = HashMap::new();
@@ -666,3 +674,5 @@ fn get_derivative(rec: &OpRec, last: NodeIndex) -> OpRec {
         }
     }
 }
+
+fn main() {}
