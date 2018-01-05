@@ -51,7 +51,12 @@ macro_rules! impl_op_mut {
     ($lower:ident, $upper:ident, $ty:ty, $discriminant:ident) => {
         impl $upper<$ty> for OpRec {
             fn $lower(&mut self, rhs: $ty) {
-                impl_op_inner!($upper, self, $discriminant, rhs);
+                let float: f64 = rhs.into();
+                if let Some(x) = simplify_operator_check(float, &self, Ops::$discriminant) {
+                    *self = x;
+                } else {
+                    impl_op_inner!($upper, self, $discriminant, float);
+                }
             }
         }
         
@@ -109,7 +114,7 @@ macro_rules! is_oprec_method_macro {
 
 macro_rules! impl_op_inner {
     ($upper:ident, $selfi:ident, $discriminant:ident, $rhs:ident) => {
-        let rh_node = $selfi.graph.add_node(Ops::Const(f64::from($rhs)));
+        let rh_node = $selfi.graph.add_node(Ops::Const($rhs));
         let operation = $selfi.graph.add_node(Ops::$discriminant);
         let root = RootIntersection { root: rh_node, intersection: Some(operation), var: None };
         if $selfi.roots[0].intersection.is_none() {
@@ -122,13 +127,33 @@ macro_rules! impl_op_inner {
     }
 }
 
+fn simplify_operator_check(x: f64, rec: &OpRec, op: Ops) -> Option<OpRec> {
+    match op {
+        Ops::Add | Ops::Sub => if x == 0.0 { return Some(rec.clone()) },
+        Ops::Mul => if x == 1.0 {
+            return Some(rec.clone())
+        } else if x == 0.0 {
+            return Some(OpRec::from(0.0))
+        },
+        Ops::Div => if x == 1.0 {
+            return Some(rec.clone())
+        },
+        _ => return None
+    };
+    None
+}
+
 macro_rules! impl_op {
     ($lower:ident, $upper:ident, $ty:ty) => {
         impl $upper<$ty> for OpRec {
             type Output = OpRec;
             fn $lower(self, rhs: $ty) -> Self::Output {
                 let mut notself = self.clone();
-                impl_op_inner!($upper, notself, $upper, rhs);
+                let float: f64 = rhs.into();
+                if let Some(x) = simplify_operator_check(float, &self, Ops::$upper) {
+                    return x;
+                }
+                impl_op_inner!($upper, notself, $upper, float);
                 notself
             }
         }
@@ -619,3 +644,12 @@ fn get_derivative(rec: &OpRec, last: NodeIndex) -> OpRec {
         }
     }
 }
+
+/*
+fn main() {
+    let mut test = OpRec::new();
+    test *= 0;
+    println!("{:?}", petgraph::dot::Dot::with_config(&test.graph, &[petgraph::dot::Config::EdgeNoLabel]));
+    //println!("{:?}", petgraph::dot::Dot::with_config(&get_derivative(&test, test.last).graph, &[petgraph::dot::Config::EdgeNoLabel]));
+}
+*/
