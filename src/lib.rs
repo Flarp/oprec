@@ -184,8 +184,13 @@ macro_rules! impl_type {
             fn from(x: $ty) -> OpRec {
                 let mut graph = OpRecGraph::new();
                 let constant = graph.add_node(Ops::Const(f64::from(x)));
+                let root = RootIntersection {
+                    root: constant,
+                    intersection: None,
+                    var: None
+                };
                 let id = rand::random::<usize>();
-                OpRec { vars: vec![], id: id, graph: graph, roots: vec![], last: constant }
+                OpRec { vars: vec![], id: id, graph: graph, roots: vec![root], last: constant }
             }
         }
         impl_op!(add, Add, $ty);
@@ -651,6 +656,7 @@ fn get_derivative(rec: &OpRec, last: NodeIndex) -> OpRec {
 fn main() {
     let mut test = OpRec::new();
     test *= 0;
+    test += 1;
     println!("{:?}", petgraph::dot::Dot::with_config(&test.graph, &[petgraph::dot::Config::EdgeNoLabel]));
     //println!("{:?}", petgraph::dot::Dot::with_config(&get_derivative(&test, test.last).graph, &[petgraph::dot::Config::EdgeNoLabel]));
 }
