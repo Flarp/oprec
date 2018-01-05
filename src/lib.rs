@@ -137,6 +137,8 @@ fn simplify_operator_check(x: f64, rec: &OpRec, op: Ops) -> Option<OpRec> {
         },
         Ops::Div => if x == 1.0 {
             return Some(rec.clone())
+        } else if x == 0.0 {
+            return Some(OpRec::from(std::f64::NAN))
         },
         _ => return None
     };
