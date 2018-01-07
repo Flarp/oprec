@@ -1,6 +1,6 @@
 # OpRec
 
-A giant work in progress crate that can transform functions. It is planned to support inverses (solving for variables), derivatives using [operator overloading](https://en.wikipedia.org/wiki/Automatic_differentiation#Operator_overloading_(OO)), and integrals using the [Risch Algorithm](https://en.wikipedia.org/wiki/Risch_algorithm).
+A giant work in progress crate that can transform functions. It is planned to support inverses (solving for variables), derivatives using [operator overloading](https://en.wikipedia.org/wiki/Automatic_differentiation#Operator_overloading_(OO)), and integrals using the [Risch Algorithm](https://en.wikipedia.org/wiki/Risch_algorithm). It can be only used in the latest Rust nightly due to https://github.com/rust-lang/rust/issues/44851.
 
 ```rust
 extern crate oprec;
@@ -22,3 +22,5 @@ fn main() {
   assert_eq!(cos_4(PI), func(map).ok().unwrap());
 }
 ```
+
+There is currently no documentation due to docs.rs not using the latest nightly.
