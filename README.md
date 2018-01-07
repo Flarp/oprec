@@ -9,14 +9,16 @@ use std::f64::consts::PI;
 
 fn main() {
   // sin(4x)
-  let rec = (OpRec::new()*4).sin();
-  
+  let mut rec = OpRec::new();
+  rec *= 4;
+  rec = rec.sin();
+  let id = rec.id();
   // 4cos(4x)
-  let cos_4 = |x| 4*((4*x).cos());
+  let cos_4 = |x: f64| 4.0*((4.0*x).cos());
   let func = rec.differentiate().functify();
   let mut map = HashMap::new();
-  map.insert(rec.id(), PI);
+  map.insert(id, PI);
   
-  assert_eq!(cos_4(PI), func(map));
+  assert_eq!(cos_4(PI), func(map).ok().unwrap());
 }
 ```
