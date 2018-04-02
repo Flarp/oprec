@@ -387,7 +387,7 @@ impl OpRec {
     pub fn graph<'a>(&'a self) -> &'a OpRecGraph {
         &self.graph
     }
-    
+
 }
 
 impl_oprec_method!(
@@ -398,6 +398,7 @@ impl_oprec_method!(
     (powf, Pow, float: f64),
     (exp, Exp), (ln, Ln), (abs, Abs)
 );
+
 
 fn oprec_to_function_check(x: &OpRec, last: NodeIndex) -> Box<Fn(HashMap<usize, f64>) -> Result<f64, usize>> {
     let rec = x.clone();
