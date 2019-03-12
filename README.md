@@ -1,6 +1,6 @@
 # OpRec
 
-A giant work in progress crate that can transform functions. It is planned to support inverses (solving for variables), derivatives using [operator overloading](https://en.wikipedia.org/wiki/Automatic_differentiation#Operator_overloading_(OO). It can be only used in the latest Rust nightly due to https://github.com/rust-lang/rust/issues/44851.
+A giant work in progress crate that can transform functions. It is planned to support inverses (solving for variables), derivatives using [operator overloading](https://en.wikipedia.org/wiki/Automatic_differentiation#Operator_overloading_(OO)). It can be only used in the latest Rust nightly due to https://github.com/rust-lang/rust/issues/44851.
 
 ```rust
 extern crate oprec;
